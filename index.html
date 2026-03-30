@@ -7,243 +7,259 @@
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+        :root {
+            --gh-bg: #f6f8fa;
+            --gh-canvas: #ffffff;
+            --gh-border: #d0d7de;
+            --gh-text: #24292f;
+            --gh-muted: #57606a;
+            --gh-accent: #0969da;
+            --gh-success: #1a7f37;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            background-color: #0d1117;
-            color: #c9d1d9;
+            background: var(--gh-bg);
+            color: var(--gh-text);
             min-height: 100vh;
             line-height: 1.5;
         }
 
-        /* Header */
         .header {
-            background: #161b22;
-            border-bottom: 1px solid #30363d;
-            padding: 12px 24px;
+            background: var(--gh-canvas);
+            border-bottom: 1px solid var(--gh-border);
+            padding: 14px 24px;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 16px;
         }
+
         .header h1 {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 600;
-            color: #f0f6fc;
+            color: var(--gh-text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        .header h1 span { color: #58a6ff; }
-        .lang-select {
-            background: #21262d;
-            color: #c9d1d9;
-            border: 1px solid #30363d;
+
+        .header h1 span:first-child { color: var(--gh-accent); }
+
+        .lang-select,
+        .form-input,
+        .btn-copy,
+        .btn-primary {
             border-radius: 6px;
-            padding: 4px 8px;
-            font-size: 13px;
+            border: 1px solid var(--gh-border);
+            font-size: 14px;
+        }
+
+        .lang-select,
+        .form-input {
+            width: 100%;
+            background: var(--gh-canvas);
+            color: var(--gh-text);
+            padding: 6px 10px;
+        }
+
+        .lang-select {
+            width: auto;
+            min-width: 115px;
             cursor: pointer;
         }
-        .lang-select:focus { border-color: #58a6ff; outline: none; }
 
-        /* Layout */
         .main {
-            max-width: 1200px;
-            margin: 24px auto;
-            padding: 0 24px;
+            max-width: 1280px;
+            margin: 20px auto;
+            padding: 0 20px 20px;
             display: grid;
-            grid-template-columns: 380px 1fr;
-            gap: 24px;
+            grid-template-columns: 390px 1fr;
+            gap: 20px;
         }
-        @media (max-width: 860px) {
+
+        @media (max-width: 900px) {
             .main { grid-template-columns: 1fr; }
         }
 
-        /* Panels */
         .panel {
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 6px;
+            background: var(--gh-canvas);
+            border: 1px solid var(--gh-border);
+            border-radius: 8px;
             overflow: hidden;
         }
+
         .panel-header {
             padding: 12px 16px;
-            border-bottom: 1px solid #30363d;
+            border-bottom: 1px solid var(--gh-border);
             font-size: 14px;
             font-weight: 600;
-            color: #f0f6fc;
+            color: var(--gh-text);
+            background: #f6f8fa;
         }
-        .panel-body { padding: 16px; }
 
-        /* Form */
-        .form-group { margin-bottom: 16px; }
-        .form-group:last-child { margin-bottom: 0; }
+        .panel-body { padding: 16px; }
+        .form-group { margin-bottom: 14px; }
+
         .form-label {
             display: block;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
-            color: #c9d1d9;
+            color: var(--gh-muted);
             margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
         }
-        .form-input {
-            width: 100%;
-            padding: 6px 12px;
-            background: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            color: #c9d1d9;
-            font-size: 14px;
-            line-height: 20px;
-        }
-        .form-input:focus { border-color: #58a6ff; outline: none; box-shadow: 0 0 0 3px rgba(88,166,255,0.3); }
-        .form-input[type="number"] { width: 80px; }
 
         .form-row {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
         }
-        .form-row .form-group { flex: 1; min-width: 120px; }
 
-        .color-group { display: flex; align-items: center; gap: 8px; }
-        .color-input {
-            width: 32px;
-            height: 32px;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            background: none;
-            cursor: pointer;
-            padding: 2px;
+        .form-input:focus,
+        .lang-select:focus,
+        .color-hex:focus {
+            outline: none;
+            border-color: var(--gh-accent);
+            box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
         }
-        .color-hex {
-            width: 90px;
-            padding: 6px 8px;
-            background: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            color: #c9d1d9;
-            font-size: 13px;
-            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-        }
-        .color-hex:focus { border-color: #58a6ff; outline: none; }
 
         .checkbox-row {
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 13px;
+            color: var(--gh-text);
+            font-size: 14px;
         }
+
         .checkbox-row input[type="checkbox"] {
-            accent-color: #238636;
             width: 16px;
             height: 16px;
+            accent-color: var(--gh-success);
         }
 
-        /* Button */
-        .btn-primary {
-            display: inline-flex;
+        .color-group {
+            display: flex;
             align-items: center;
-            justify-content: center;
-            gap: 6px;
+            gap: 8px;
+        }
+
+        .color-input {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--gh-border);
+            border-radius: 6px;
+            background: var(--gh-canvas);
+            cursor: pointer;
+            padding: 2px;
+        }
+
+        .color-hex {
             width: 100%;
-            padding: 8px 16px;
-            background: #238636;
-            color: #fff;
-            border: none;
+            background: var(--gh-canvas);
+            border: 1px solid var(--gh-border);
             border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.15s;
-        }
-        .btn-primary:hover { background: #2ea043; }
-        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-        .btn-copy {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            background: #21262d;
-            color: #c9d1d9;
-            border: 1px solid #30363d;
-            border-radius: 6px;
+            color: var(--gh-text);
+            padding: 8px 10px;
             font-size: 13px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 8px 14px;
+            background: var(--gh-success);
+            border-color: rgba(27, 31, 36, 0.15);
+            color: #fff;
             font-weight: 600;
             cursor: pointer;
-            transition: background 0.15s;
         }
-        .btn-copy:hover { background: #30363d; }
-        .btn-copy.copied { background: #238636; color: #fff; border-color: #238636; }
 
-        /* Preview */
+        .btn-primary:hover { background: #1f883d; }
+        .btn-primary:disabled { opacity: 0.65; cursor: not-allowed; }
+
         .preview-area {
-            background: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 6px;
+            background: var(--gh-bg);
+            border: 1px solid var(--gh-border);
+            border-radius: 8px;
             padding: 16px;
-            min-height: 120px;
+            min-height: 220px;
+            max-height: 580px;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow-x: auto;
+            overflow: auto;
             position: relative;
         }
+
         .preview-area img { max-width: 100%; display: block; }
 
         .spinner {
             width: 32px;
             height: 32px;
-            border: 3px solid #30363d;
-            border-top-color: #58a6ff;
+            border: 3px solid #d0d7de;
+            border-top-color: #0969da;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
+
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .error-msg {
-            color: #f85149;
+            color: #cf222e;
             font-size: 13px;
             padding: 8px 12px;
-            background: rgba(248,81,73,0.1);
-            border: 1px solid rgba(248,81,73,0.4);
+            background: #ffebe9;
+            border: 1px solid #ff8182;
             border-radius: 6px;
         }
 
-        /* Markdown section */
-        .markdown-section { margin-top: 16px; }
+        .markdown-section { margin-top: 14px; }
+
         .markdown-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             margin-bottom: 8px;
         }
+
         .markdown-header span {
             font-size: 13px;
+            color: var(--gh-muted);
             font-weight: 600;
-            color: #8b949e;
-        }
-        .code-block {
-            background: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            padding: 12px;
-            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-            font-size: 12px;
-            color: #c9d1d9;
-            word-break: break-all;
-            line-height: 1.6;
         }
 
-        .warning-text {
-            color: #d29922;
-            font-size: 12px;
-            margin-top: 12px;
-            display: flex;
+        .btn-copy {
+            background: #f6f8fa;
+            color: var(--gh-text);
+            padding: 6px 10px;
+            display: inline-flex;
             align-items: center;
             gap: 6px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-copy:hover { background: #f3f4f6; }
+        .btn-copy.copied { background: #1f883d; color: #fff; border-color: #1f883d; }
+
+        .code-block {
+            background: #f6f8fa;
+            border: 1px solid var(--gh-border);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+            color: #1f2328;
+            word-break: break-all;
+            line-height: 1.5;
         }
     </style>
 </head>
 <body>
-
 <header class="header">
-    <h1><span>&#9733;</span> <span data-i18n="title">GitHub PR Badge Generator</span></h1>
+    <h1><span>★</span> <span data-i18n="title">GitHub PR Badge Generator</span></h1>
     <select class="lang-select" id="langSelect" onchange="switchLanguage(this.value)">
         <option value="en">English</option>
         <option value="ru">Русский</option>
@@ -251,7 +267,6 @@
 </header>
 
 <div class="main">
-    <!-- Config Panel -->
     <div class="panel">
         <div class="panel-header" data-i18n="configTitle">Configuration</div>
         <div class="panel-body">
@@ -260,11 +275,29 @@
                 <input class="form-input" type="text" id="username" placeholder="username" value="OstinUA">
             </div>
 
-            <div class="form-group">
-                <label class="form-label" data-i18n="limitLabel">Number of PRs</label>
-                <input class="form-input" type="number" id="limit" value="7" min="1" max="15">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="limitLabel">Number of PRs</label>
+                    <input class="form-input" type="number" id="limit" value="7" min="1" max="15">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="themeLabel">Theme</label>
+                    <select class="form-input" id="themePreset" onchange="applyThemePreset(this.value)">
+                        <option value="dark">GitHub Dark</option>
+                        <option value="light">GitHub Light</option>
+                        <option value="dimmed">GitHub Dimmed</option>
+                        <option value="night">Night Blue</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
             </div>
 
+            <div class="form-group">
+                <div class="checkbox-row">
+                    <input type="checkbox" id="showPulls" checked>
+                    <label for="showPulls" data-i18n="showPullsLabel">Show pull requests</label>
+                </div>
+            </div>
             <div class="form-group">
                 <div class="checkbox-row">
                     <input type="checkbox" id="showDate" checked>
@@ -276,6 +309,22 @@
                     <input type="checkbox" id="showRepo" checked>
                     <label for="showRepo" data-i18n="showRepoLabel">Show repository</label>
                 </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="badgeWidthLabel">Badge width</label>
+                    <input class="form-input" type="number" id="badgeWidth" value="830" min="700" max="1400">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="rowHeightLabel">Row height</label>
+                    <input class="form-input" type="number" id="rowHeight" value="40" min="30" max="60">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" data-i18n="previewHeightLabel">Preview window height</label>
+                <input class="form-input" type="number" id="previewHeight" value="220" min="120" max="580">
             </div>
 
             <div class="form-row">
@@ -294,11 +343,38 @@
                     </div>
                 </div>
             </div>
-            <div class="form-group">
-                <label class="form-label" data-i18n="titleColorLabel">Title color</label>
-                <div class="color-group">
-                    <input type="color" class="color-input" id="titleColorPicker" value="#58a6ff">
-                    <input type="text" class="color-hex" id="titleColor" value="58a6ff" maxlength="6">
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="titleColorLabel">Title</label>
+                    <div class="color-group">
+                        <input type="color" class="color-input" id="titleColorPicker" value="#58a6ff">
+                        <input type="text" class="color-hex" id="titleColor" value="58a6ff" maxlength="6">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="mutedColorLabel">Muted text</label>
+                    <div class="color-group">
+                        <input type="color" class="color-input" id="mutedColorPicker" value="#8b949e">
+                        <input type="text" class="color-hex" id="mutedColor" value="8b949e" maxlength="6">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="starColorLabel">Star color</label>
+                    <div class="color-group">
+                        <input type="color" class="color-input" id="starColorPicker" value="#e3b341">
+                        <input type="text" class="color-hex" id="starColor" value="e3b341" maxlength="6">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="borderColorLabel">Border color</label>
+                    <div class="color-group">
+                        <input type="color" class="color-input" id="borderColorPicker" value="#30363d">
+                        <input type="text" class="color-hex" id="borderColor" value="30363d" maxlength="6">
+                    </div>
                 </div>
             </div>
 
@@ -307,21 +383,16 @@
                     <span data-i18n="generateBtn">Generate Badge</span>
                 </button>
             </div>
-
-            <div class="warning-text">
-                &#9888; <span data-i18n="warning">For stable operation, add GITHUB_TOKEN to your Vercel environment variables.</span>
-            </div>
         </div>
     </div>
 
-    <!-- Preview Panel -->
     <div class="panel">
         <div class="panel-header" data-i18n="previewTitle">Preview</div>
         <div class="panel-body">
             <div class="preview-area" id="previewArea">
                 <img id="badge" alt="Top PR Stats" style="display:none;">
                 <div class="spinner" id="spinner" style="display:none;"></div>
-                <span id="previewPlaceholder" style="color:#484f58;font-size:14px;" data-i18n="previewPlaceholder">Click "Generate Badge" to preview</span>
+                <span id="previewPlaceholder" style="color:#6e7781;font-size:14px;" data-i18n="previewPlaceholder">Click "Generate Badge" to preview</span>
             </div>
 
             <div class="markdown-section">
@@ -339,7 +410,6 @@
 </div>
 
 <script>
-// ── Localization ───────────────────────────────────────────────
 const i18n = {
     en: {
         title: 'GitHub PR Badge Generator',
@@ -347,18 +417,24 @@ const i18n = {
         previewTitle: 'Preview',
         usernameLabel: 'GitHub Username',
         limitLabel: 'Number of PRs',
+        showPullsLabel: 'Show pull requests',
         showDateLabel: 'Show date',
         showRepoLabel: 'Show repository',
+        themeLabel: 'Theme',
+        badgeWidthLabel: 'Badge width',
+        rowHeightLabel: 'Row height',
+        previewHeightLabel: 'Preview window height',
         bgColorLabel: 'Background',
         textColorLabel: 'Text',
-        titleColorLabel: 'Title color',
+        titleColorLabel: 'Title',
+        mutedColorLabel: 'Muted text',
+        starColorLabel: 'Star color',
+        borderColorLabel: 'Border color',
         generateBtn: 'Generate Badge',
-        warning: 'For stable operation, add GITHUB_TOKEN to your Vercel environment variables.',
         previewPlaceholder: 'Click "Generate Badge" to preview',
         markdownLabel: 'Markdown for README.md',
         copyBtn: 'Copy',
         copiedBtn: 'Copied!',
-        loadingText: 'Generating...',
         errorFetch: 'Failed to load badge. Check the username or try again later.',
     },
     ru: {
@@ -367,20 +443,33 @@ const i18n = {
         previewTitle: 'Предпросмотр',
         usernameLabel: 'Имя пользователя GitHub',
         limitLabel: 'Количество PR',
+        showPullsLabel: 'Показывать pull requests',
         showDateLabel: 'Показать дату',
         showRepoLabel: 'Показать репозиторий',
+        themeLabel: 'Тема',
+        badgeWidthLabel: 'Ширина бейджа',
+        rowHeightLabel: 'Высота строки',
+        previewHeightLabel: 'Высота окна предпросмотра',
         bgColorLabel: 'Фон',
         textColorLabel: 'Текст',
-        titleColorLabel: 'Цвет заголовка',
+        titleColorLabel: 'Заголовок',
+        mutedColorLabel: 'Вторичный текст',
+        starColorLabel: 'Цвет звезды',
+        borderColorLabel: 'Цвет рамки',
         generateBtn: 'Сгенерировать',
-        warning: 'Для стабильной работы добавьте GITHUB_TOKEN в переменные окружения Vercel.',
         previewPlaceholder: 'Нажмите "Сгенерировать" для предпросмотра',
         markdownLabel: 'Markdown для README.md',
         copyBtn: 'Копировать',
         copiedBtn: 'Скопировано!',
-        loadingText: 'Генерация...',
         errorFetch: 'Не удалось загрузить бейдж. Проверьте имя пользователя или попробуйте позже.',
     }
+};
+
+const themePresets = {
+    dark: { bg: '0d1117', text: 'c9d1d9', title: '58a6ff', muted: '8b949e', star: 'e3b341', border: '30363d' },
+    light: { bg: 'ffffff', text: '24292f', title: '0969da', muted: '57606a', star: 'bf8700', border: 'd0d7de' },
+    dimmed: { bg: '22272e', text: 'adbac7', title: '539bf5', muted: '768390', star: 'd29922', border: '444c56' },
+    night: { bg: '0b1320', text: 'd8e5ff', title: '4ea1ff', muted: '89a4d6', star: 'ffd166', border: '1d3557' }
 };
 
 let currentLang = 'en';
@@ -393,66 +482,99 @@ function switchLanguage(lang) {
     });
 }
 
-// ── Color Pickers Sync ────────────────────────────────────────
 function setupColorSync(pickerId, hexId) {
     const picker = document.getElementById(pickerId);
     const hex = document.getElementById(hexId);
-    picker.addEventListener('input', () => { hex.value = picker.value.substring(1); });
+    picker.addEventListener('input', () => {
+        hex.value = picker.value.substring(1);
+        document.getElementById('themePreset').value = 'custom';
+    });
     hex.addEventListener('input', () => {
         const v = hex.value.replace(/[^a-fA-F0-9]/g, '').slice(0, 6);
         hex.value = v;
         if (v.length === 6) picker.value = '#' + v;
+        document.getElementById('themePreset').value = 'custom';
     });
 }
 
-setupColorSync('bgColorPicker', 'bgColor');
-setupColorSync('textColorPicker', 'textColor');
-setupColorSync('titleColorPicker', 'titleColor');
+function setColor(name, value) {
+    document.getElementById(`${name}Color`).value = value;
+    document.getElementById(`${name}ColorPicker`).value = '#' + value;
+}
 
-// ── Badge URL Builder ─────────────────────────────────────────
+function applyThemePreset(name) {
+    if (!themePresets[name]) return;
+    const t = themePresets[name];
+    setColor('bg', t.bg);
+    setColor('text', t.text);
+    setColor('title', t.title);
+    setColor('muted', t.muted);
+    setColor('star', t.star);
+    setColor('border', t.border);
+}
+
+['bg', 'text', 'title', 'muted', 'star', 'border'].forEach((name) => setupColorSync(`${name}ColorPicker`, `${name}Color`));
+applyThemePreset('dark');
+
+function updatePreviewWindowSize() {
+    const height = Math.min(580, Math.max(120, parseInt(document.getElementById('previewHeight').value, 10) || 220));
+    document.getElementById('previewArea').style.minHeight = `${height}px`;
+}
+
+document.getElementById('previewHeight').addEventListener('input', updatePreviewWindowSize);
+updatePreviewWindowSize();
+
 function buildBadgeUrl() {
     const username = document.getElementById('username').value.trim() || 'OstinUA';
     const limit = document.getElementById('limit').value;
+    const showPulls = document.getElementById('showPulls').checked;
     const showDate = document.getElementById('showDate').checked;
     const showRepo = document.getElementById('showRepo').checked;
+    const badgeWidth = document.getElementById('badgeWidth').value;
+    const rowHeight = document.getElementById('rowHeight').value;
     const bgColor = document.getElementById('bgColor').value;
     const textColor = document.getElementById('textColor').value;
     const titleColor = document.getElementById('titleColor').value;
+    const mutedColor = document.getElementById('mutedColor').value;
+    const starColor = document.getElementById('starColor').value;
+    const borderColor = document.getElementById('borderColor').value;
 
     const params = new URLSearchParams();
     params.set('username', username);
     if (limit !== '7') params.set('limit', limit);
+    if (!showPulls) params.set('show_pr', 'false');
     if (!showDate) params.set('show_date', 'false');
     if (!showRepo) params.set('show_repo', 'false');
-    if (bgColor !== '0d1117') params.set('bg_color', bgColor);
-    if (textColor !== 'c9d1d9') params.set('text_color', textColor);
-    if (titleColor !== '58a6ff') params.set('title_color', titleColor);
+    if (badgeWidth !== '830') params.set('badge_width', badgeWidth);
+    if (rowHeight !== '40') params.set('row_height', rowHeight);
+    if (bgColor !== themePresets.dark.bg) params.set('bg_color', bgColor);
+    if (textColor !== themePresets.dark.text) params.set('text_color', textColor);
+    if (titleColor !== themePresets.dark.title) params.set('title_color', titleColor);
+    if (mutedColor !== themePresets.dark.muted) params.set('muted_color', mutedColor);
+    if (starColor !== themePresets.dark.star) params.set('star_color', starColor);
+    if (borderColor !== themePresets.dark.border) params.set('border_color', borderColor);
 
-    return { username, url: `${window.location.origin}/api/badge?${params.toString()}` };
+    return { url: `${window.location.origin}/api/badge?${params.toString()}` };
 }
 
-// ── Generate ──────────────────────────────────────────────────
 function generate() {
-    const { username, url } = buildBadgeUrl();
+    const { url } = buildBadgeUrl();
     const badge = document.getElementById('badge');
     const spinner = document.getElementById('spinner');
     const placeholder = document.getElementById('previewPlaceholder');
     const btn = document.getElementById('generateBtn');
     const errorEl = document.getElementById('previewError');
 
-    // Show loading
     badge.style.display = 'none';
     placeholder.style.display = 'none';
     spinner.style.display = 'block';
     btn.disabled = true;
     if (errorEl) errorEl.remove();
 
-    // Update markdown
-    const targetUrl = `https://github.com/pulls?q=is:pr+author:${encodeURIComponent(username)}`;
+    const targetUrl = 'https://github.com/readme-SVG/readme-pr-contributors-rating';
     const mdText = `[![Top PRs](${url})](${targetUrl})`;
     document.getElementById('markdownCode').textContent = mdText;
 
-    // Load image
     const img = new Image();
     img.onload = () => {
         badge.src = url;
@@ -472,7 +594,6 @@ function generate() {
     img.src = url;
 }
 
-// ── Copy Markdown ─────────────────────────────────────────────
 async function copyMarkdown() {
     const text = document.getElementById('markdownCode').textContent;
     if (!text || text === '-') return;
@@ -486,9 +607,8 @@ async function copyMarkdown() {
             span.textContent = i18n[currentLang].copyBtn;
             btn.classList.remove('copied');
         }, 2000);
-    } catch (_) { /* clipboard not available */ }
+    } catch (_) {}
 }
 </script>
-
 </body>
 </html>
