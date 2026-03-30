@@ -1,0 +1,8 @@
+{
+  "name": "github-pr-stars-badge",
+  "version": "1.0.0",
+  "description": "Dynamic SVG badge showing top GitHub PRs sorted by repository stars",
+  "scripts": {
+    "start": "node api/badge.js"
+  }
+}
