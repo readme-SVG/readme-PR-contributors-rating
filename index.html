@@ -262,7 +262,19 @@
     <h1><span>★</span> <span data-i18n="title">GitHub PR Badge Generator</span></h1>
     <select class="lang-select" id="langSelect" onchange="switchLanguage(this.value)">
         <option value="en">English</option>
+        <option value="zh-CN">中文</option>
+        <option value="es">Español</option>
+        <option value="fr">Français</option>
+        <option value="pt">Português</option>
         <option value="ru">Русский</option>
+        <option value="ja">日本語</option>
+        <option value="de">Deutsch</option>
+        <option value="uk">Українська</option>
+        <option value="pl">Polski</option>
+        <option value="nl">Nederlands</option>
+        <option value="kk">Қазақша</option>
+        <option value="sv">Svenska</option>
+        <option value="cs">Čeština</option>
     </select>
 </header>
 
@@ -409,60 +421,31 @@
     </div>
 </div>
 
+<script src="./i18n/validate.js"></script>
+<script src="./i18n/en.js"></script>
+<script src="./i18n/zh-CN.js"></script>
+<script src="./i18n/es.js"></script>
+<script src="./i18n/fr.js"></script>
+<script src="./i18n/pt.js"></script>
+<script src="./i18n/ru.js"></script>
+<script src="./i18n/ja.js"></script>
+<script src="./i18n/de.js"></script>
+<script src="./i18n/uk.js"></script>
+<script src="./i18n/pl.js"></script>
+<script src="./i18n/nl.js"></script>
+<script src="./i18n/kk.js"></script>
+<script src="./i18n/sv.js"></script>
+<script src="./i18n/cs.js"></script>
+
 <script>
-const i18n = {
-    en: {
-        title: 'GitHub PR Badge Generator',
-        configTitle: 'Configuration',
-        previewTitle: 'Preview',
-        usernameLabel: 'GitHub Username',
-        limitLabel: 'Number of PRs',
-        showPullsLabel: 'Show pull requests',
-        showDateLabel: 'Show date',
-        showRepoLabel: 'Show repository',
-        themeLabel: 'Theme',
-        badgeWidthLabel: 'Badge width',
-        rowHeightLabel: 'Row height',
-        previewHeightLabel: 'Preview window height',
-        bgColorLabel: 'Background',
-        textColorLabel: 'Text',
-        titleColorLabel: 'Title',
-        mutedColorLabel: 'Muted text',
-        starColorLabel: 'Star color',
-        borderColorLabel: 'Border color',
-        generateBtn: 'Generate Badge',
-        previewPlaceholder: 'Click "Generate Badge" to preview',
-        markdownLabel: 'Markdown for README.md',
-        copyBtn: 'Copy',
-        copiedBtn: 'Copied!',
-        errorFetch: 'Failed to load badge. Check the username or try again later.',
-    },
-    ru: {
-        title: 'Генератор PR-бейджа GitHub',
-        configTitle: 'Настройки',
-        previewTitle: 'Предпросмотр',
-        usernameLabel: 'Имя пользователя GitHub',
-        limitLabel: 'Количество PR',
-        showPullsLabel: 'Показывать pull requests',
-        showDateLabel: 'Показать дату',
-        showRepoLabel: 'Показать репозиторий',
-        themeLabel: 'Тема',
-        badgeWidthLabel: 'Ширина бейджа',
-        rowHeightLabel: 'Высота строки',
-        previewHeightLabel: 'Высота окна предпросмотра',
-        bgColorLabel: 'Фон',
-        textColorLabel: 'Текст',
-        titleColorLabel: 'Заголовок',
-        mutedColorLabel: 'Вторичный текст',
-        starColorLabel: 'Цвет звезды',
-        borderColorLabel: 'Цвет рамки',
-        generateBtn: 'Сгенерировать',
-        previewPlaceholder: 'Нажмите "Сгенерировать" для предпросмотра',
-        markdownLabel: 'Markdown для README.md',
-        copyBtn: 'Копировать',
-        copiedBtn: 'Скопировано!',
-        errorFetch: 'Не удалось загрузить бейдж. Проверьте имя пользователя или попробуйте позже.',
-    }
+const i18n = window.__I18N;
+validateI18nIntegrity();
+
+const themePresets = {
+    dark: { bg: '0d1117', text: 'c9d1d9', title: '58a6ff', muted: '8b949e', star: 'e3b341', border: '30363d' },
+    light: { bg: 'ffffff', text: '24292f', title: '0969da', muted: '57606a', star: 'bf8700', border: 'd0d7de' },
+    dimmed: { bg: '22272e', text: 'adbac7', title: '539bf5', muted: '768390', star: 'd29922', border: '444c56' },
+    night: { bg: '0b1320', text: 'd8e5ff', title: '4ea1ff', muted: '89a4d6', star: 'ffd166', border: '1d3557' }
 };
 
 const themePresets = {
@@ -475,6 +458,7 @@ const themePresets = {
 let currentLang = 'en';
 
 function switchLanguage(lang) {
+    if (!i18n[lang]) return;
     currentLang = lang;
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
