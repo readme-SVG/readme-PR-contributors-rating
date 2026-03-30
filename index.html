@@ -1,105 +1,494 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub Top Contributions Generator</title>
+    <title>GitHub PR Badge Generator</title>
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; 
-            background-color: #0d1117; 
-            color: #c9d1d9; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            min-height: 100vh; 
-            margin: 0; 
-            padding: 20px; 
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+            line-height: 1.5;
         }
-        .container { 
-            background: #161b22; 
-            padding: 30px; 
-            border-radius: 8px; 
-            border: 1px solid #30363d; 
-            text-align: center; 
-            max-width: 950px; 
-            width: 100%; 
-            box-sizing: border-box; 
+
+        /* Header */
+        .header {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
-        input { 
-            padding: 8px 12px; 
-            background: #0d1117; 
-            border: 1px solid #30363d; 
-            color: #c9d1d9; 
-            border-radius: 6px; 
-            margin-right: 10px; 
-            width: 250px; 
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #f0f6fc;
         }
-        button { 
-            padding: 8px 16px; 
-            background: #238636; 
-            color: #fff; 
-            border: none; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            font-weight: bold; 
-        }
-        button:hover { 
-            background: #2ea043; 
-        }
-        .preview { 
-            margin-top: 30px; 
-            overflow-x: auto; 
-            background: #0d1117; 
-            padding: 20px; 
-            border-radius: 8px; 
+        .header h1 span { color: #58a6ff; }
+        .lang-select {
+            background: #21262d;
+            color: #c9d1d9;
             border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 13px;
+            cursor: pointer;
         }
-        code { 
-            display: block; 
-            margin-top: 15px; 
-            background: #0d1117; 
-            padding: 10px; 
-            border-radius: 6px; 
-            border: 1px solid #30363d; 
-            user-select: all; 
-            word-break: break-all; 
+        .lang-select:focus { border-color: #58a6ff; outline: none; }
+
+        /* Layout */
+        .main {
+            max-width: 1200px;
+            margin: 24px auto;
+            padding: 0 24px;
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 24px;
         }
-        .warning { 
-            color: #d29922; 
-            font-size: 14px; 
-            margin-top: 15px; 
+        @media (max-width: 860px) {
+            .main { grid-template-columns: 1fr; }
+        }
+
+        /* Panels */
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #30363d;
+            font-size: 14px;
+            font-weight: 600;
+            color: #f0f6fc;
+        }
+        .panel-body { padding: 16px; }
+
+        /* Form */
+        .form-group { margin-bottom: 16px; }
+        .form-group:last-child { margin-bottom: 0; }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #c9d1d9;
+            margin-bottom: 6px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 6px 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            font-size: 14px;
+            line-height: 20px;
+        }
+        .form-input:focus { border-color: #58a6ff; outline: none; box-shadow: 0 0 0 3px rgba(88,166,255,0.3); }
+        .form-input[type="number"] { width: 80px; }
+
+        .form-row {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .form-row .form-group { flex: 1; min-width: 120px; }
+
+        .color-group { display: flex; align-items: center; gap: 8px; }
+        .color-input {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background: none;
+            cursor: pointer;
+            padding: 2px;
+        }
+        .color-hex {
+            width: 90px;
+            padding: 6px 8px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            font-size: 13px;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+        }
+        .color-hex:focus { border-color: #58a6ff; outline: none; }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+        .checkbox-row input[type="checkbox"] {
+            accent-color: #238636;
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Button */
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            padding: 8px 16px;
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .btn-copy {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-copy:hover { background: #30363d; }
+        .btn-copy.copied { background: #238636; color: #fff; border-color: #238636; }
+
+        /* Preview */
+        .preview-area {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: auto;
+            position: relative;
+        }
+        .preview-area img { max-width: 100%; display: block; }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #30363d;
+            border-top-color: #58a6ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-msg {
+            color: #f85149;
+            font-size: 13px;
+            padding: 8px 12px;
+            background: rgba(248,81,73,0.1);
+            border: 1px solid rgba(248,81,73,0.4);
+            border-radius: 6px;
+        }
+
+        /* Markdown section */
+        .markdown-section { margin-top: 16px; }
+        .markdown-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .markdown-header span {
+            font-size: 13px;
+            font-weight: 600;
+            color: #8b949e;
+        }
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 12px;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+            font-size: 12px;
+            color: #c9d1d9;
+            word-break: break-all;
+            line-height: 1.6;
+        }
+
+        .warning-text {
+            color: #d29922;
+            font-size: 12px;
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Топ контрибьюшенов по звездам</h2>
-        <div>
-            <input type="text" id="username" placeholder="GitHub Username" value="OstinUA">
-            <button onclick="generate()">Сгенерировать</button>
-        </div>
-        <p class="warning">Для стабильной работы добавьте GITHUB_TOKEN в переменные окружения Vercel.</p>
-        <div class="preview">
-            <img id="badge" src="/api/badge?username=OstinUA" alt="Top PR Stats" style="max-width: 100%;">
-        </div>
-        <div>
-            <p>Markdown код для README.md:</p>
-            <code id="markdown">[![Top PRs](https://твой-домен.vercel.app/api/badge?username=OstinUA)](https://github.com/pulls?q=is:pr+author:OstinUA)</code>
+
+<header class="header">
+    <h1><span>&#9733;</span> <span data-i18n="title">GitHub PR Badge Generator</span></h1>
+    <select class="lang-select" id="langSelect" onchange="switchLanguage(this.value)">
+        <option value="en">EN</option>
+        <option value="ru">RU</option>
+    </select>
+</header>
+
+<div class="main">
+    <!-- Config Panel -->
+    <div class="panel">
+        <div class="panel-header" data-i18n="configTitle">Configuration</div>
+        <div class="panel-body">
+            <div class="form-group">
+                <label class="form-label" data-i18n="usernameLabel">GitHub Username</label>
+                <input class="form-input" type="text" id="username" placeholder="username" value="OstinUA">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" data-i18n="limitLabel">Number of PRs</label>
+                <input class="form-input" type="number" id="limit" value="7" min="1" max="15">
+            </div>
+
+            <div class="form-group">
+                <div class="checkbox-row">
+                    <input type="checkbox" id="showDate" checked>
+                    <label for="showDate" data-i18n="showDateLabel">Show date</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="checkbox-row">
+                    <input type="checkbox" id="showRepo" checked>
+                    <label for="showRepo" data-i18n="showRepoLabel">Show repository</label>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="bgColorLabel">Background</label>
+                    <div class="color-group">
+                        <input type="color" class="color-input" id="bgColorPicker" value="#0d1117">
+                        <input type="text" class="color-hex" id="bgColor" value="0d1117" maxlength="6">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="textColorLabel">Text</label>
+                    <div class="color-group">
+                        <input type="color" class="color-input" id="textColorPicker" value="#c9d1d9">
+                        <input type="text" class="color-hex" id="textColor" value="c9d1d9" maxlength="6">
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" data-i18n="titleColorLabel">Title color</label>
+                <div class="color-group">
+                    <input type="color" class="color-input" id="titleColorPicker" value="#58a6ff">
+                    <input type="text" class="color-hex" id="titleColor" value="58a6ff" maxlength="6">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <button class="btn-primary" id="generateBtn" onclick="generate()">
+                    <span data-i18n="generateBtn">Generate Badge</span>
+                </button>
+            </div>
+
+            <div class="warning-text">
+                &#9888; <span data-i18n="warning">For stable operation, add GITHUB_TOKEN to your Vercel environment variables.</span>
+            </div>
         </div>
     </div>
 
-    <script>
-        function generate() {
-            const username = document.getElementById('username').value || 'OstinUA';
-            const domain = window.location.origin;
-            const badgeUrl = `${domain}/api/badge?username=${username}`;
-            const targetUrl = `https://github.com/pulls?q=is:pr+author:${username}`;
-            
-            document.getElementById('badge').src = badgeUrl;
-            document.getElementById('markdown').innerText = `[![Top PRs](${badgeUrl})](${targetUrl})`;
-        }
-    </script>
+    <!-- Preview Panel -->
+    <div class="panel">
+        <div class="panel-header" data-i18n="previewTitle">Preview</div>
+        <div class="panel-body">
+            <div class="preview-area" id="previewArea">
+                <img id="badge" alt="Top PR Stats" style="display:none;">
+                <div class="spinner" id="spinner" style="display:none;"></div>
+                <span id="previewPlaceholder" style="color:#484f58;font-size:14px;" data-i18n="previewPlaceholder">Click "Generate Badge" to preview</span>
+            </div>
+
+            <div class="markdown-section">
+                <div class="markdown-header">
+                    <span data-i18n="markdownLabel">Markdown for README.md</span>
+                    <button class="btn-copy" id="copyBtn" onclick="copyMarkdown()">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>
+                        <span data-i18n="copyBtn">Copy</span>
+                    </button>
+                </div>
+                <div class="code-block" id="markdownCode">-</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Localization ───────────────────────────────────────────────
+const i18n = {
+    en: {
+        title: 'GitHub PR Badge Generator',
+        configTitle: 'Configuration',
+        previewTitle: 'Preview',
+        usernameLabel: 'GitHub Username',
+        limitLabel: 'Number of PRs',
+        showDateLabel: 'Show date',
+        showRepoLabel: 'Show repository',
+        bgColorLabel: 'Background',
+        textColorLabel: 'Text',
+        titleColorLabel: 'Title color',
+        generateBtn: 'Generate Badge',
+        warning: 'For stable operation, add GITHUB_TOKEN to your Vercel environment variables.',
+        previewPlaceholder: 'Click "Generate Badge" to preview',
+        markdownLabel: 'Markdown for README.md',
+        copyBtn: 'Copy',
+        copiedBtn: 'Copied!',
+        loadingText: 'Generating...',
+        errorFetch: 'Failed to load badge. Check the username or try again later.',
+    },
+    ru: {
+        title: 'Генератор PR-бейджа GitHub',
+        configTitle: 'Настройки',
+        previewTitle: 'Предпросмотр',
+        usernameLabel: 'Имя пользователя GitHub',
+        limitLabel: 'Количество PR',
+        showDateLabel: 'Показать дату',
+        showRepoLabel: 'Показать репозиторий',
+        bgColorLabel: 'Фон',
+        textColorLabel: 'Текст',
+        titleColorLabel: 'Цвет заголовка',
+        generateBtn: 'Сгенерировать',
+        warning: 'Для стабильной работы добавьте GITHUB_TOKEN в переменные окружения Vercel.',
+        previewPlaceholder: 'Нажмите "Сгенерировать" для предпросмотра',
+        markdownLabel: 'Markdown для README.md',
+        copyBtn: 'Копировать',
+        copiedBtn: 'Скопировано!',
+        loadingText: 'Генерация...',
+        errorFetch: 'Не удалось загрузить бейдж. Проверьте имя пользователя или попробуйте позже.',
+    }
+};
+
+let currentLang = 'en';
+
+function switchLanguage(lang) {
+    currentLang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (i18n[lang][key]) el.textContent = i18n[lang][key];
+    });
+}
+
+// ── Color Pickers Sync ────────────────────────────────────────
+function setupColorSync(pickerId, hexId) {
+    const picker = document.getElementById(pickerId);
+    const hex = document.getElementById(hexId);
+    picker.addEventListener('input', () => { hex.value = picker.value.substring(1); });
+    hex.addEventListener('input', () => {
+        const v = hex.value.replace(/[^a-fA-F0-9]/g, '').slice(0, 6);
+        hex.value = v;
+        if (v.length === 6) picker.value = '#' + v;
+    });
+}
+
+setupColorSync('bgColorPicker', 'bgColor');
+setupColorSync('textColorPicker', 'textColor');
+setupColorSync('titleColorPicker', 'titleColor');
+
+// ── Badge URL Builder ─────────────────────────────────────────
+function buildBadgeUrl() {
+    const username = document.getElementById('username').value.trim() || 'OstinUA';
+    const limit = document.getElementById('limit').value;
+    const showDate = document.getElementById('showDate').checked;
+    const showRepo = document.getElementById('showRepo').checked;
+    const bgColor = document.getElementById('bgColor').value;
+    const textColor = document.getElementById('textColor').value;
+    const titleColor = document.getElementById('titleColor').value;
+
+    const params = new URLSearchParams();
+    params.set('username', username);
+    if (limit !== '7') params.set('limit', limit);
+    if (!showDate) params.set('show_date', 'false');
+    if (!showRepo) params.set('show_repo', 'false');
+    if (bgColor !== '0d1117') params.set('bg_color', bgColor);
+    if (textColor !== 'c9d1d9') params.set('text_color', textColor);
+    if (titleColor !== '58a6ff') params.set('title_color', titleColor);
+
+    return { username, url: `${window.location.origin}/api/badge?${params.toString()}` };
+}
+
+// ── Generate ──────────────────────────────────────────────────
+function generate() {
+    const { username, url } = buildBadgeUrl();
+    const badge = document.getElementById('badge');
+    const spinner = document.getElementById('spinner');
+    const placeholder = document.getElementById('previewPlaceholder');
+    const btn = document.getElementById('generateBtn');
+    const errorEl = document.getElementById('previewError');
+
+    // Show loading
+    badge.style.display = 'none';
+    placeholder.style.display = 'none';
+    spinner.style.display = 'block';
+    btn.disabled = true;
+    if (errorEl) errorEl.remove();
+
+    // Update markdown
+    const targetUrl = `https://github.com/pulls?q=is:pr+author:${encodeURIComponent(username)}`;
+    const mdText = `[![Top PRs](${url})](${targetUrl})`;
+    document.getElementById('markdownCode').textContent = mdText;
+
+    // Load image
+    const img = new Image();
+    img.onload = () => {
+        badge.src = url;
+        badge.style.display = 'block';
+        spinner.style.display = 'none';
+        btn.disabled = false;
+    };
+    img.onerror = () => {
+        spinner.style.display = 'none';
+        btn.disabled = false;
+        const err = document.createElement('div');
+        err.className = 'error-msg';
+        err.id = 'previewError';
+        err.textContent = i18n[currentLang].errorFetch;
+        document.getElementById('previewArea').appendChild(err);
+    };
+    img.src = url;
+}
+
+// ── Copy Markdown ─────────────────────────────────────────────
+async function copyMarkdown() {
+    const text = document.getElementById('markdownCode').textContent;
+    if (!text || text === '-') return;
+    try {
+        await navigator.clipboard.writeText(text);
+        const btn = document.getElementById('copyBtn');
+        const span = btn.querySelector('[data-i18n="copyBtn"]');
+        span.textContent = i18n[currentLang].copiedBtn;
+        btn.classList.add('copied');
+        setTimeout(() => {
+            span.textContent = i18n[currentLang].copyBtn;
+            btn.classList.remove('copied');
+        }, 2000);
+    } catch (_) { /* clipboard not available */ }
+}
+</script>
+
 </body>
 </html>
