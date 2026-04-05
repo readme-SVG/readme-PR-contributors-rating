@@ -7,6 +7,12 @@ export default async function handler(req, res) {
     const badgeWidth = clamp(parseInt(req.query.badge_width, 10) || 830, 700, 1400);
     const rowHeight = clamp(parseInt(req.query.row_height, 10) || 40, 30, 60);
 
+    const excludeOwn = req.query.exclude_own === 'true';
+    const sortBy = req.query.sort_by === 'date' ? 'date' : 'stars';
+    const customTitle = req.query.custom_title ? sanitizeText(req.query.custom_title, 80) : '';
+    const showLang = req.query.show_lang === 'true';
+    const layout = ['compact', 'detailed'].includes(req.query.layout) ? req.query.layout : 'default';
+
     const bgColor = sanitizeHex(req.query.bg_color, '0d1117');
     const textColor = sanitizeHex(req.query.text_color, 'c9d1d9');
     const titleColor = sanitizeHex(req.query.title_color, '58a6ff');
@@ -40,10 +46,20 @@ export default async function handler(req, res) {
         }
 
         const prsData = await prsResponse.json();
-        const prs = prsData.items || [];
+        let prs = prsData.items || [];
 
         if (prs.length === 0) {
             return sendErrorSvg(res, `No Pull Requests found for "${escapeXml(username)}".`, bgColor, borderColor);
+        }
+
+        if (excludeOwn) {
+            prs = prs.filter(pr => {
+                const repoOwner = pr.repository_url.split('/').slice(-2, -1)[0];
+                return repoOwner.toLowerCase() !== username.toLowerCase();
+            });
+            if (prs.length === 0) {
+                return sendErrorSvg(res, `No external Pull Requests found for "${escapeXml(username)}".`, bgColor, borderColor);
+            }
         }
 
         const uniqueRepoUrls = [...new Set(prs.map(pr => pr.repository_url))].slice(0, 20);
@@ -52,27 +68,71 @@ export default async function handler(req, res) {
         const repoResults = await Promise.allSettled(
             uniqueRepoUrls.map(async (url) => {
                 const repoRes = await fetch(url, { headers });
-                if (!repoRes.ok) return { url, stars: 0 };
+                if (!repoRes.ok) return { url, stars: 0, language: null };
                 const repoData = await repoRes.json();
-                return { url, stars: repoData.stargazers_count || 0 };
+                return { url, stars: repoData.stargazers_count || 0, language: repoData.language || null };
             })
         );
 
         for (const result of repoResults) {
             if (result.status === 'fulfilled') {
-                repoStats[result.value.url] = result.value.stars;
+                repoStats[result.value.url] = {
+                    stars: result.value.stars,
+                    language: result.value.language
+                };
             }
         }
 
-        const sortedPrs = prs
-            .map(pr => ({ ...pr, repoStars: repoStats[pr.repository_url] || 0 }))
-            .sort((a, b) => b.repoStars - a.repoStars)
-            .slice(0, limit);
+        let enrichedPrs = prs.map(pr => ({
+            ...pr,
+            repoStars: (repoStats[pr.repository_url] || {}).stars || 0,
+            repoLanguage: (repoStats[pr.repository_url] || {}).language || null
+        }));
+
+        if (sortBy === 'date') {
+            enrichedPrs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        } else {
+            enrichedPrs.sort((a, b) => b.repoStars - a.repoStars);
+        }
+
+        const sortedPrs = enrichedPrs.slice(0, limit);
+
+        // Fetch line stats for detailed layout
+        if (layout === 'detailed') {
+            const prDetailResults = await Promise.allSettled(
+                sortedPrs.map(async (pr) => {
+                    const prApiUrl = pr.pull_request && pr.pull_request.url;
+                    if (!prApiUrl) return { id: pr.id, additions: 0, deletions: 0 };
+                    try {
+                        const prRes = await fetch(prApiUrl, { headers });
+                        if (!prRes.ok) return { id: pr.id, additions: 0, deletions: 0 };
+                        const prData = await prRes.json();
+                        return { id: pr.id, additions: prData.additions || 0, deletions: prData.deletions || 0 };
+                    } catch {
+                        return { id: pr.id, additions: 0, deletions: 0 };
+                    }
+                })
+            );
+
+            const detailMap = {};
+            for (const result of prDetailResults) {
+                if (result.status === 'fulfilled') {
+                    detailMap[result.value.id] = result.value;
+                }
+            }
+
+            for (const pr of sortedPrs) {
+                const detail = detailMap[pr.id] || {};
+                pr.additions = detail.additions || 0;
+                pr.deletions = detail.deletions || 0;
+            }
+        }
 
         const svg = buildSvg(sortedPrs, username, {
             showPr,
             showDate,
             showRepo,
+            showLang,
             badgeWidth,
             rowHeight,
             bgColor,
@@ -82,7 +142,9 @@ export default async function handler(req, res) {
             starColor,
             borderColor,
             shadowColor,
-            transparent
+            transparent,
+            customTitle,
+            layout
         });
 
         res.setHeader('Content-Type', 'image/svg+xml');
@@ -94,8 +156,42 @@ export default async function handler(req, res) {
     }
 }
 
+const LANG_COLORS = {
+    'JavaScript': '#f1e05a',
+    'TypeScript': '#3178c6',
+    'Python': '#3572A5',
+    'Java': '#b07219',
+    'Go': '#00ADD8',
+    'Rust': '#dea584',
+    'C': '#555555',
+    'C++': '#f34b7d',
+    'C#': '#178600',
+    'Ruby': '#701516',
+    'PHP': '#4F5D95',
+    'Swift': '#F05138',
+    'Kotlin': '#A97BFF',
+    'Dart': '#00B4AB',
+    'Scala': '#c22d40',
+    'Shell': '#89e051',
+    'Lua': '#000080',
+    'HTML': '#e34c26',
+    'CSS': '#563d7c',
+    'Vue': '#41b883',
+    'Svelte': '#ff3e00',
+    'Elixir': '#6e4a7e',
+    'Haskell': '#5e5086',
+    'R': '#198CE7',
+    'Objective-C': '#438eff',
+    'Perl': '#0298c3',
+    'Zig': '#ec915c'
+};
+
 function sanitizeUsername(input) {
     return input.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 39);
+}
+
+function sanitizeText(input, maxLen) {
+    return String(input).replace(/[^\w\s\-.,!?()@#&:;'/]/g, '').slice(0, maxLen);
 }
 
 function sanitizeHex(input, fallback) {
@@ -151,6 +247,7 @@ function buildSvg(prs, username, opts) {
         showPr,
         showDate,
         showRepo,
+        showLang,
         badgeWidth,
         rowHeight,
         bgColor,
@@ -160,29 +257,46 @@ function buildSvg(prs, username, opts) {
         starColor,
         borderColor,
         shadowColor,
-        transparent
+        transparent,
+        customTitle,
+        layout
     } = opts;
+
+    const isCompact = layout === 'compact';
+    const isDetailed = layout === 'detailed';
 
     const font = 'Segoe UI, Helvetica, Arial, sans-serif';
     const safeUser = escapeXml(username);
+    const headerText = customTitle ? escapeXml(customTitle) : `Top Contributions by ${safeUser}`;
     const innerLeft = 20;
     const innerRight = badgeWidth - 20;
 
     const iconX = innerLeft;
     let cursorX = innerLeft + 24;
 
-    const repoX = showRepo ? cursorX : -1;
-    if (showRepo) cursorX += 180;
+    const langDotOffset = showLang ? 16 : 0;
 
-    const prX = showPr ? cursorX : -1;
-    if (showPr) cursorX += showDate ? 360 : 460;
+    const repoX = showRepo ? cursorX : -1;
+    if (showRepo) cursorX += 180 + langDotOffset;
+
+    let effectiveShowPr = showPr;
+    if (isCompact) effectiveShowPr = false;
+
+    const prX = effectiveShowPr ? cursorX : -1;
+    if (effectiveShowPr) cursorX += showDate ? 360 : 460;
 
     const dateX = showDate ? cursorX : -1;
     if (showDate) cursorX += 110;
 
-    const starX = Math.min(innerRight - 80, Math.max(cursorX, innerLeft + 520));
+    let locX = -1;
+    if (isDetailed) {
+        locX = cursorX;
+        cursorX += 120;
+    }
 
-    const titleMaxLen = showPr
+    const starX = Math.min(innerRight - 80, Math.max(cursorX, innerLeft + (isCompact ? 300 : 520)));
+
+    const titleMaxLen = effectiveShowPr
         ? (showRepo ? (showDate ? 38 : 50) : (showDate ? 50 : 65))
         : 0;
 
@@ -192,11 +306,14 @@ function buildSvg(prs, username, opts) {
     if (showRepo) {
         headerHtml += `<text x="${repoX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>REPOSITORY</text>`;
     }
-    if (showPr) {
+    if (effectiveShowPr) {
         headerHtml += `<text x="${prX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>PULL REQUEST</text>`;
     }
     if (showDate) {
         headerHtml += `<text x="${dateX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>DATE</text>`;
+    }
+    if (isDetailed) {
+        headerHtml += `<text x="${locX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>CHANGES</text>`;
     }
     headerHtml += `<text x="${starX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>STARS</text>`;
 
@@ -214,13 +331,25 @@ function buildSvg(prs, username, opts) {
         rowsHtml += `<svg x="${iconX}" y="-12" width="16" height="16" viewBox="0 0 16 16" fill="${icon.color}"><path fill-rule="evenodd" d="${icon.path}"></path></svg>`;
 
         if (showRepo) {
-            rowsHtml += `<text x="${repoX}" y="0" font-family="${font}" font-size="14" font-weight="600" fill="#${textColor}" ${textShadowStyle}>${repoText}</text>`;
+            if (showLang && pr.repoLanguage) {
+                const langColor = LANG_COLORS[pr.repoLanguage] || '#8b949e';
+                rowsHtml += `<circle cx="${repoX + 5}" cy="-4" r="5" fill="${langColor}"/>`;
+                rowsHtml += `<text x="${repoX + langDotOffset}" y="0" font-family="${font}" font-size="14" font-weight="600" fill="#${textColor}" ${textShadowStyle}>${repoText}</text>`;
+            } else {
+                rowsHtml += `<text x="${repoX}" y="0" font-family="${font}" font-size="14" font-weight="600" fill="#${textColor}" ${textShadowStyle}>${repoText}</text>`;
+            }
         }
-        if (showPr) {
+        if (effectiveShowPr) {
             rowsHtml += `<text x="${prX}" y="0" font-family="${font}" font-size="14" fill="#${mutedColor}" ${textShadowStyle}>${title}</text>`;
         }
         if (showDate) {
             rowsHtml += `<text x="${dateX}" y="0" font-family="${font}" font-size="13" fill="#${mutedColor}" ${textShadowStyle}>${date}</text>`;
+        }
+        if (isDetailed) {
+            const additions = pr.additions || 0;
+            const deletions = pr.deletions || 0;
+            rowsHtml += `<text x="${locX}" y="0" font-family="${font}" font-size="13" fill="#3fb950" ${textShadowStyle}>+${additions}</text>`;
+            rowsHtml += `<text x="${locX + 55}" y="0" font-family="${font}" font-size="13" fill="#f85149" ${textShadowStyle}>-${deletions}</text>`;
         }
 
         rowsHtml += `<svg x="${starX}" y="-12" width="16" height="16" viewBox="0 0 16 16" fill="#${starColor}"><path fill-rule="evenodd" d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"></path></svg>`;
@@ -228,7 +357,7 @@ function buildSvg(prs, username, opts) {
         rowsHtml += `</g>`;
     });
 
-    const svgHeight = 130 + prs.length * rowHeight;
+    const svgHeight = 95 + prs.length * rowHeight;
 
     const backgroundRect = transparent
         ? ''
@@ -243,7 +372,7 @@ function buildSvg(prs, username, opts) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${badgeWidth}" height="${svgHeight}" viewBox="0 0 ${badgeWidth} ${svgHeight}">
   ${shadowDefs}
   ${backgroundRect}
-  <text x="20" y="35" font-family="${font}" font-size="18" font-weight="bold" fill="#${titleColor}" ${textShadowStyle}>Top Contributions by ${safeUser}</text>
+  <text x="20" y="35" font-family="${font}" font-size="18" font-weight="bold" fill="#${titleColor}" ${textShadowStyle}>${headerText}</text>
   ${headerHtml}
   ${headerLine}
   ${rowsHtml}
