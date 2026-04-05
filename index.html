@@ -331,32 +331,53 @@
             </div>
             <div class="form-group">
                 <div class="checkbox-row">
-                    <input type="checkbox" id="excludeOwn">
-                    <label for="excludeOwn" data-i18n="excludeOwnLabel">Exclude own repositories</label>
+                    <input type="checkbox" id="showChanges">
+                    <label for="showChanges" data-i18n="showChangesLabel">Show changes</label>
                 </div>
             </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="sortByLabel">Sort by</label>
-                    <select class="form-input" id="sortBy">
-                        <option value="stars" data-i18n="sortByStars">Stars</option>
-                        <option value="date" data-i18n="sortByDate">Recent</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="layoutLabel">Layout</label>
-                    <select class="form-input" id="layout">
-                        <option value="default" data-i18n="layoutDefault">Default</option>
-                        <option value="compact" data-i18n="layoutCompact">Compact</option>
-                        <option value="detailed" data-i18n="layoutDetailed">Detailed</option>
-                    </select>
+            <div class="form-group">
+                <div class="checkbox-row">
+                    <input type="checkbox" id="showStars" checked>
+                    <label for="showStars" data-i18n="showStarsLabel">Show stars</label>
                 </div>
             </div>
 
             <div class="form-group">
                 <label class="form-label" data-i18n="customTitleLabel">Custom title</label>
                 <input class="form-input" type="text" id="customTitle" placeholder="Leave empty for default" maxlength="80">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="repoWidthLabel">Repo Width</label>
+                    <input class="form-input" type="number" id="repoWidth" value="180" min="60" max="500">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="langWidthLabel">Language Width</label>
+                    <input class="form-input" type="number" id="langWidth" value="80" min="60" max="300">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="prWidthLabel">PR Width</label>
+                    <input class="form-input" type="number" id="prWidth" value="320" min="100" max="900">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="dateWidthLabel">Date Width</label>
+                    <input class="form-input" type="number" id="dateWidth" value="90" min="60" max="300">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" data-i18n="changesWidthLabel">Changes Width</label>
+                    <input class="form-input" type="number" id="changesWidth" value="100" min="70" max="300">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="starsWidthLabel">Stars Width</label>
+                    <input class="form-input" type="number" id="starsWidth" value="60" min="50" max="240">
+                </div>
             </div>
 
             <div class="form-row">
@@ -555,6 +576,12 @@ function buildBadgeUrl() {
     const showRepo = document.getElementById('showRepo').checked;
     const badgeWidth = document.getElementById('badgeWidth').value;
     const rowHeight = document.getElementById('rowHeight').value;
+    const repoWidth = document.getElementById('repoWidth').value;
+    const langWidth = document.getElementById('langWidth').value;
+    const prWidth = document.getElementById('prWidth').value;
+    const dateWidth = document.getElementById('dateWidth').value;
+    const changesWidth = document.getElementById('changesWidth').value;
+    const starsWidth = document.getElementById('starsWidth').value;
     const bgColor = document.getElementById('bgColor').value;
     const textColor = document.getElementById('textColor').value;
     const titleColor = document.getElementById('titleColor').value;
@@ -563,11 +590,10 @@ function buildBadgeUrl() {
     const borderColor = document.getElementById('borderColor').value;
     const shadowColor = document.getElementById('shadowColor').value;
 
-    const excludeOwn = document.getElementById('excludeOwn').checked;
-    const sortBy = document.getElementById('sortBy').value;
     const customTitleVal = document.getElementById('customTitle').value.trim();
     const showLang = document.getElementById('showLang').checked;
-    const layoutVal = document.getElementById('layout').value;
+    const showChanges = document.getElementById('showChanges').checked;
+    const showStars = document.getElementById('showStars').checked;
 
     const params = new URLSearchParams();
     params.set('username', username);
@@ -577,11 +603,16 @@ function buildBadgeUrl() {
     if (!showRepo) params.set('show_repo', 'false');
     if (badgeWidth !== '830') params.set('badge_width', badgeWidth);
     if (rowHeight !== '40') params.set('row_height', rowHeight);
-    if (excludeOwn) params.set('exclude_own', 'true');
-    if (sortBy !== 'stars') params.set('sort_by', sortBy);
+    if (repoWidth !== '180') params.set('repo_width', repoWidth);
+    if (langWidth !== '80') params.set('lang_width', langWidth);
+    if (prWidth !== '320') params.set('pr_width', prWidth);
+    if (dateWidth !== '90') params.set('date_width', dateWidth);
+    if (changesWidth !== '100') params.set('changes_width', changesWidth);
+    if (starsWidth !== '60') params.set('stars_width', starsWidth);
     if (customTitleVal) params.set('custom_title', customTitleVal);
     if (showLang) params.set('show_lang', 'true');
-    if (layoutVal !== 'default') params.set('layout', layoutVal);
+    if (showChanges) params.set('show_changes', 'true');
+    if (!showStars) params.set('show_stars', 'false');
     if (bgColor !== themePresets.dark.bg) params.set('bg_color', bgColor);
     if (textColor !== themePresets.dark.text) params.set('text_color', textColor);
     if (titleColor !== themePresets.dark.title) params.set('title_color', titleColor);
