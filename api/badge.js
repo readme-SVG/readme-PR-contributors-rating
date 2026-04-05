@@ -7,11 +7,9 @@ export default async function handler(req, res) {
     const badgeWidth = clamp(parseInt(req.query.badge_width, 10) || 830, 700, 1400);
     const rowHeight = clamp(parseInt(req.query.row_height, 10) || 40, 30, 60);
 
-    const excludeOwn = req.query.exclude_own === 'true';
-    const sortBy = req.query.sort_by === 'date' ? 'date' : 'stars';
     const customTitle = req.query.custom_title ? sanitizeText(req.query.custom_title, 80) : '';
     const showLang = req.query.show_lang === 'true';
-    const layout = ['compact', 'detailed'].includes(req.query.layout) ? req.query.layout : 'default';
+    const showChanges = req.query.show_changes === 'true';
 
     const bgColor = sanitizeHex(req.query.bg_color, '0d1117');
     const textColor = sanitizeHex(req.query.text_color, 'c9d1d9');
@@ -52,16 +50,6 @@ export default async function handler(req, res) {
             return sendErrorSvg(res, `No Pull Requests found for "${escapeXml(username)}".`, bgColor, borderColor);
         }
 
-        if (excludeOwn) {
-            prs = prs.filter(pr => {
-                const repoOwner = pr.repository_url.split('/').slice(-2, -1)[0];
-                return repoOwner.toLowerCase() !== username.toLowerCase();
-            });
-            if (prs.length === 0) {
-                return sendErrorSvg(res, `No external Pull Requests found for "${escapeXml(username)}".`, bgColor, borderColor);
-            }
-        }
-
         const uniqueRepoUrls = [...new Set(prs.map(pr => pr.repository_url))].slice(0, 20);
         const repoStats = {};
 
@@ -89,16 +77,11 @@ export default async function handler(req, res) {
             repoLanguage: (repoStats[pr.repository_url] || {}).language || null
         }));
 
-        if (sortBy === 'date') {
-            enrichedPrs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        } else {
-            enrichedPrs.sort((a, b) => b.repoStars - a.repoStars);
-        }
+        enrichedPrs.sort((a, b) => b.repoStars - a.repoStars);
 
         const sortedPrs = enrichedPrs.slice(0, limit);
 
-        // Fetch line stats for detailed layout
-        if (layout === 'detailed') {
+        if (showChanges) {
             const prDetailResults = await Promise.allSettled(
                 sortedPrs.map(async (pr) => {
                     const prApiUrl = pr.pull_request && pr.pull_request.url;
@@ -144,7 +127,7 @@ export default async function handler(req, res) {
             shadowColor,
             transparent,
             customTitle,
-            layout
+            showChanges
         });
 
         res.setHeader('Content-Type', 'image/svg+xml');
@@ -248,6 +231,7 @@ function buildSvg(prs, username, opts) {
         showDate,
         showRepo,
         showLang,
+        showChanges,
         badgeWidth,
         rowHeight,
         bgColor,
@@ -258,47 +242,63 @@ function buildSvg(prs, username, opts) {
         borderColor,
         shadowColor,
         transparent,
-        customTitle,
-        layout
+        customTitle
     } = opts;
-
-    const isCompact = layout === 'compact';
-    const isDetailed = layout === 'detailed';
 
     const font = 'Segoe UI, Helvetica, Arial, sans-serif';
     const safeUser = escapeXml(username);
     const headerText = customTitle ? escapeXml(customTitle) : `Top Contributions by ${safeUser}`;
     const innerLeft = 20;
     const innerRight = badgeWidth - 20;
-
-    const iconX = innerLeft;
-    let cursorX = innerLeft + 24;
-
+    const colGap = 24;
     const langDotOffset = showLang ? 16 : 0;
 
-    const repoX = showRepo ? cursorX : -1;
-    if (showRepo) cursorX += 180 + langDotOffset;
+    const iconX = innerLeft;
+    const prPaddingLeft = 24;
+    const minStarsX = innerLeft + 280;
+    const starsBlockWidth = 84;
+    const dateColWidth = 95;
+    const changesColWidth = 100;
+    const repoColWidth = showRepo ? (showLang ? 210 : 190) : 0;
 
-    let effectiveShowPr = showPr;
-    if (isCompact) effectiveShowPr = false;
+    const trailingColumnsWidth = starsBlockWidth
+        + (showDate ? (colGap + dateColWidth) : 0)
+        + (showChanges ? (colGap + changesColWidth) : 0);
 
-    const prX = effectiveShowPr ? cursorX : -1;
-    if (effectiveShowPr) cursorX += showDate ? 360 : 460;
+    const availableRightEdge = innerRight - trailingColumnsWidth;
+    const minPrX = iconX + prPaddingLeft;
 
-    const dateX = showDate ? cursorX : -1;
-    if (showDate) cursorX += 110;
+    let repoX = -1;
+    let prX = -1;
 
-    let locX = -1;
-    if (isDetailed) {
-        locX = cursorX;
-        cursorX += 120;
+    if (showRepo) {
+        repoX = minPrX;
+        prX = repoX + repoColWidth + colGap;
+    } else {
+        prX = minPrX;
     }
 
-    const starX = Math.min(innerRight - 80, Math.max(cursorX, innerLeft + (isCompact ? 300 : 520)));
+    const availablePrWidth = Math.max(120, availableRightEdge - prX);
+    const titleMaxLen = showPr ? Math.max(12, Math.floor((availablePrWidth - 8) / 7.2)) : 0;
 
-    const titleMaxLen = effectiveShowPr
-        ? (showRepo ? (showDate ? 38 : 50) : (showDate ? 50 : 65))
-        : 0;
+    const starsIconX = Math.max(prX + availablePrWidth + colGap, minStarsX);
+    const starsHeaderX = starsIconX;
+
+    let dateX = -1;
+    let changesX = -1;
+    let trailingX = starsIconX - colGap;
+
+    if (showDate) {
+        trailingX -= dateColWidth;
+        dateX = trailingX;
+        trailingX -= colGap;
+    }
+
+    if (showChanges) {
+        trailingX -= changesColWidth;
+        changesX = trailingX;
+        trailingX -= colGap;
+    }
 
     const textShadowStyle = transparent ? `filter="url(#textShadow)"` : '';
 
@@ -306,16 +306,16 @@ function buildSvg(prs, username, opts) {
     if (showRepo) {
         headerHtml += `<text x="${repoX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>REPOSITORY</text>`;
     }
-    if (effectiveShowPr) {
+    if (showPr) {
         headerHtml += `<text x="${prX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>PULL REQUEST</text>`;
     }
     if (showDate) {
         headerHtml += `<text x="${dateX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>DATE</text>`;
     }
-    if (isDetailed) {
-        headerHtml += `<text x="${locX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>CHANGES</text>`;
+    if (showChanges) {
+        headerHtml += `<text x="${changesX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>CHANGES</text>`;
     }
-    headerHtml += `<text x="${starX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>STARS</text>`;
+    headerHtml += `<text x="${starsHeaderX}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>STARS</text>`;
 
     let rowsHtml = '';
     prs.forEach((pr, index) => {
@@ -339,21 +339,21 @@ function buildSvg(prs, username, opts) {
                 rowsHtml += `<text x="${repoX}" y="0" font-family="${font}" font-size="14" font-weight="600" fill="#${textColor}" ${textShadowStyle}>${repoText}</text>`;
             }
         }
-        if (effectiveShowPr) {
+        if (showPr) {
             rowsHtml += `<text x="${prX}" y="0" font-family="${font}" font-size="14" fill="#${mutedColor}" ${textShadowStyle}>${title}</text>`;
         }
         if (showDate) {
             rowsHtml += `<text x="${dateX}" y="0" font-family="${font}" font-size="13" fill="#${mutedColor}" ${textShadowStyle}>${date}</text>`;
         }
-        if (isDetailed) {
+        if (showChanges) {
             const additions = pr.additions || 0;
             const deletions = pr.deletions || 0;
-            rowsHtml += `<text x="${locX}" y="0" font-family="${font}" font-size="13" fill="#3fb950" ${textShadowStyle}>+${additions}</text>`;
-            rowsHtml += `<text x="${locX + 55}" y="0" font-family="${font}" font-size="13" fill="#f85149" ${textShadowStyle}>-${deletions}</text>`;
+            rowsHtml += `<text x="${changesX}" y="0" font-family="${font}" font-size="13" fill="#3fb950" ${textShadowStyle}>+${additions}</text>`;
+            rowsHtml += `<text x="${changesX + 50}" y="0" font-family="${font}" font-size="13" fill="#f85149" ${textShadowStyle}>-${deletions}</text>`;
         }
 
-        rowsHtml += `<svg x="${starX}" y="-12" width="16" height="16" viewBox="0 0 16 16" fill="#${starColor}"><path fill-rule="evenodd" d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"></path></svg>`;
-        rowsHtml += `<text x="${starX + 20}" y="0" font-family="${font}" font-size="13" font-weight="bold" fill="#${starColor}" ${textShadowStyle}>${starsText}</text>`;
+        rowsHtml += `<svg x="${starsIconX}" y="-12" width="16" height="16" viewBox="0 0 16 16" fill="#${starColor}"><path fill-rule="evenodd" d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"></path></svg>`;
+        rowsHtml += `<text x="${starsIconX + 20}" y="0" font-family="${font}" font-size="13" font-weight="bold" fill="#${starColor}" ${textShadowStyle}>${starsText}</text>`;
         rowsHtml += `</g>`;
     });
 
