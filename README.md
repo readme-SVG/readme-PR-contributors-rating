@@ -1,16 +1,16 @@
-# GitHub PR Contributors Rating
+<a href="https://github.com/OstinUA" target="_blank" rel="noopener"><img src="https://raw.githubusercontent.com/OstinUA/Image-storage/main/readme/readme-pr-contributors-rating.png" valign="middle" alt="readme pr contributors rating"></a>
 
-[![Top PRs](https://readme-pr-contributors-rating.vercel.app/api/badge?username=schacon&show_pr=true&show_date=true&show_lang=true&show_changes=true&unique_repos=true&col_order=pr%2Cdate%2Clang%2Cchanges&bg_color=000000&text_color=ffffff&title_color=ffffff&muted_color=d1d5db&star_color=ffd166&border_color=000000&transparent=true)](https://github.com/readme-SVG/readme-pr-contributors-rating)
+> [!NOTE]
+> The previous README contained only a single badge embed. This rewritten documentation keeps that intent while fully documenting architecture, configuration, usage patterns, and deployment workflows.
 
 Dynamic, configurable SVG badge library for logging and visualizing top GitHub pull request activity directly inside `README.md` files.
+
+[![Top PRs](https://readme-pr-contributors-rating.vercel.app/api/badge?username=schacon&show_pr=true&show_date=true&show_lang=true&show_changes=true&unique_repos=true&col_order=pr%2Cdate%2Clang%2Cchanges&bg_color=000000&text_color=ffffff&title_color=ffffff&muted_color=d1d5db&star_color=ffd166&border_color=000000&transparent=true)](https://github.com/readme-SVG/readme-pr-contributors-rating)
 
 [![Build](https://img.shields.io/badge/Build-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 [![Version](https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge)](./package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](./LICENSE)
 [![API](https://img.shields.io/badge/API-GitHub%20GraphQL-181717?style=for-the-badge&logo=github)](https://docs.github.com/en/graphql)
-
-> [!NOTE]
-> The previous README contained only a single badge embed. This rewritten documentation keeps that intent while fully documenting architecture, configuration, usage patterns, and deployment workflows.
 
 ## Table of Contents
 
