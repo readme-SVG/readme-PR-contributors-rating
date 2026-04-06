@@ -7,18 +7,40 @@
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        :root {
+         :root {
             --gh-bg: #f6f8fa;
             --gh-canvas: #ffffff;
+            --gh-canvas-subtle: #f6f8fa;
             --gh-border: #d0d7de;
-            --gh-text: #24292f;
+            --gh-text: #1f2328;
             --gh-muted: #57606a;
             --gh-accent: #0969da;
-            --gh-success: #1a7f37;
+            --gh-success: #238636;
+            --gh-success-hover: #2ea043;
+            --gh-btn-bg: #f6f8fa;
+            --gh-btn-hover: #f3f4f6;
+            --gh-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+            --gh-focus: rgba(9, 105, 218, 0.3);
+        }
+
+        html[data-theme="dark"] {
+            --gh-bg: #0d1117;
+            --gh-canvas: #161b22;
+            --gh-canvas-subtle: #010409;
+            --gh-border: #30363d;
+            --gh-text: #e6edf3;
+            --gh-muted: #8b949e;
+            --gh-accent: #2f81f7;
+            --gh-success: #238636;
+            --gh-success-hover: #2ea043;
+            --gh-btn-bg: #21262d;
+            --gh-btn-hover: #30363d;
+            --gh-shadow: 0 1px 2px rgba(1, 4, 9, 0.4);
+            --gh-focus: rgba(47, 129, 247, 0.35);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
             background: var(--gh-bg);
             color: var(--gh-text);
             min-height: 100vh;
@@ -35,16 +57,77 @@
             gap: 16px;
         }
 
-        .header h1 {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--gh-text);
+        .repo-crumbs {
             display: flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
+            font-size: 14px;
         }
 
-        .header h1 span:first-child { color: var(--gh-accent); }
+        .repo-crumbs svg {
+            color: var(--gh-text);
+            flex: 0 0 auto;
+        }
+
+        .repo-crumb-link {
+            color: var(--gh-accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .repo-crumb-link.repo-name {
+            color: var(--gh-text);
+            font-weight: 600;
+        }
+
+        .repo-crumb-link:hover { text-decoration: underline; }
+
+        .repo-divider {
+            color: var(--gh-muted);
+            user-select: none;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .theme-toggle {
+            width: 32px;
+            height: 32px;
+            border: 1px solid var(--gh-border);
+            border-radius: 6px;
+            background: var(--gh-btn-bg);
+            color: var(--gh-text);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .theme-toggle:hover { background: var(--gh-btn-hover); }
+        .theme-toggle .icon-sun { display: none; }
+        html[data-theme="dark"] .theme-toggle .icon-sun { display: inline; }
+        html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+        .lang-select,
+        .form-input,
+        .btn-copy,
+        .btn-primary,
+        .order-btn,
+        .theme-toggle {
+            transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        .form-input,
+        .lang-select,
+        .btn-copy,
+        .order-btn,
+        .btn-primary {
+            appearance: none;
+        }
 
         .lang-select,
         .form-input,
@@ -69,6 +152,18 @@
             cursor: pointer;
         }
 
+                @media (max-width: 740px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
+
         .main {
             max-width: 1320px;
             margin: 20px auto;
@@ -88,7 +183,7 @@
             border: 1px solid var(--gh-border);
             border-radius: 10px;
             overflow: hidden;
-            box-shadow: 0 1px 2px rgba(27, 31, 36, 0.04);
+            box-shadow: var(--gh-shadow);
         }
 
         .panel-header {
@@ -97,7 +192,7 @@
             font-size: 14px;
             font-weight: 600;
             color: var(--gh-text);
-            background: #f6f8fa;
+            background: var(--gh-canvas-subtle);
         }
 
         .panel-body { padding: 16px; }
@@ -122,7 +217,7 @@
             font-size: 13px;
             font-weight: 600;
             color: var(--gh-text);
-            background: #f6f8fa;
+            background: var(--gh-canvas-subtle);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -168,7 +263,7 @@
         .color-hex:focus {
             outline: none;
             border-color: var(--gh-accent);
-            box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+            box-shadow: 0 0 0 3px var(--gh-focus);
         }
 
         .checkbox-stack {
@@ -204,7 +299,7 @@
             border: 1px solid var(--gh-border);
             border-radius: 6px;
             padding: 8px 10px;
-            background: #f6f8fa;
+            background: var(--gh-canvas-subtle);
         }
 
         .column-order-item .checkbox-row {
@@ -266,13 +361,14 @@
             padding: 9px 14px;
             background: var(--gh-success);
             border-color: rgba(27, 31, 36, 0.15);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
             color: #fff;
             font-weight: 600;
             cursor: pointer;
             margin-top: 12px;
         }
 
-        .btn-primary:hover { background: #1f883d; }
+        .btn-primary:hover { background: var(--gh-success-hover); }
         .btn-primary:disabled { opacity: 0.65; cursor: not-allowed; }
 
         .preview-area {
@@ -327,7 +423,7 @@
         }
 
         .btn-copy {
-            background: #f6f8fa;
+            background: var(--gh-btn-bg);
             color: var(--gh-text);
             padding: 6px 10px;
             display: inline-flex;
@@ -337,17 +433,17 @@
             cursor: pointer;
         }
 
-        .btn-copy:hover { background: #f3f4f6; }
+        .btn-copy:hover { background: var(--gh-btn-hover); }
         .btn-copy.copied { background: #1f883d; color: #fff; border-color: #1f883d; }
 
         .code-block {
-            background: #f6f8fa;
+            background: var(--gh-canvas-subtle);
             border: 1px solid var(--gh-border);
             border-radius: 8px;
             padding: 12px;
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             font-size: 12px;
-            color: #1f2328;
+            color: var(--gh-text);
             word-break: break-all;
             line-height: 1.5;
         }
@@ -355,8 +451,20 @@
 </head>
 <body>
 <header class="header">
-    <h1><span>★</span> <span data-i18n="title">GitHub PR Badge Generator</span></h1>
-    <select class="lang-select" id="langSelect" onchange="switchLanguage(this.value)">
+    <div class="repo-crumbs">
+        <svg aria-hidden="true" height="24" viewBox="0 0 16 16" version="1.1" width="24" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8a8.013 8.013 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.65 7.65 0 0 1 8 4.84c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
+        </svg>
+        <a class="repo-crumb-link" href="https://github.com/readme-SVG" target="_blank" rel="noreferrer">readme-SVG</a>
+        <span class="repo-divider">/</span>
+        <a class="repo-crumb-link repo-name" href="https://github.com/readme-SVG/readme-pr-contributors-rating" target="_blank" rel="noreferrer">readme-pr-contributors-rating</a>
+    </div>
+    <div class="header-actions">
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme" title="Toggle color theme">
+            <svg class="icon-moon" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M9.598 1.591a.75.75 0 0 1 .785.175 6.5 6.5 0 1 0 3.851 5.968.75.75 0 0 1 1.464-.28 8 8 0 1 1-6.315-7.863.75.75 0 0 1 .215 1.44Z"></path></svg>
+            <svg class="icon-sun" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 0a.75.75 0 0 1 .75.75V2a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0Zm0 14a.75.75 0 0 1 .75.75V16a.75.75 0 0 1-1.5 0v-1.25A.75.75 0 0 1 8 14Zm8-6a.75.75 0 0 1-.75.75H14a.75.75 0 0 1 0-1.5h1.25A.75.75 0 0 1 16 8ZM2 8a.75.75 0 0 1-.75.75H0a.75.75 0 0 1 0-1.5h1.25A.75.75 0 0 1 2 8Zm11.03 4.28a.75.75 0 0 1 1.06 1.06l-.884.884a.75.75 0 1 1-1.06-1.06l.884-.884ZM3.914 2.166a.75.75 0 0 1 1.06 0l.884.884a.75.75 0 1 1-1.06 1.06l-.884-.884a.75.75 0 0 1 0-1.06Zm9.176 0a.75.75 0 0 1 0 1.06l-.884.884a.75.75 0 0 1-1.06-1.06l.884-.884a.75.75 0 0 1 1.06 0ZM3.03 12.28a.75.75 0 0 1 0 1.06l-.884.884a.75.75 0 1 1-1.06-1.06l.884-.884a.75.75 0 0 1 1.06 0Z"></path></svg>
+        </button>
+        <select class="lang-select" id="langSelect" onchange="switchLanguage(this.value)">
         <option value="en">English</option>
         <option value="zh-CN">中文</option>
         <option value="es">Español</option>
@@ -372,6 +480,7 @@
         <option value="sv">Svenska</option>
         <option value="cs">Čeština</option>
     </select>
+    </div>
 </header>
 
 <div class="main">
@@ -431,7 +540,7 @@
                     </div>
                 </details>
 
-                <details class="config-section" open>
+                <details class="config-section">
                     <summary>Columns</summary>
                     <div class="section-body">
                         <div class="form-group">
@@ -574,7 +683,7 @@
             <div class="preview-area" id="previewArea">
                 <img id="badge" alt="Top PR Stats" style="display:none;">
                 <div class="spinner" id="spinner" style="display:none;"></div>
-                <span id="previewPlaceholder" style="color:#6e7781;font-size:14px;" data-i18n="previewPlaceholder">Click "Generate Badge" to preview</span>
+                <span id="previewPlaceholder" style="color:var(--gh-muted);font-size:14px;" data-i18n="previewPlaceholder">Click "Generate Badge" to preview</span>
             </div>
 
             <div class="markdown-section">
@@ -610,6 +719,28 @@
 <script>
 const i18n = window.__I18N;
 window.validateI18nIntegrity();
+
+const savedUiTheme = localStorage.getItem('ui-theme');
+const preferredDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+function setUiTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('ui-theme', theme);
+}
+
+function initUiTheme() {
+    const initialTheme = savedUiTheme === 'dark' || savedUiTheme === 'light'
+        ? savedUiTheme
+        : (preferredDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', initialTheme);
+}
+
+initUiTheme();
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    setUiTheme(current === 'dark' ? 'light' : 'dark');
+});
 
 const themePresets = {
     dark: { bg: '0d1117', text: 'c9d1d9', title: '58a6ff', muted: '8b949e', star: 'e3b341', border: '30363d' },
