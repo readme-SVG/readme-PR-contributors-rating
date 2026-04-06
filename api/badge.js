@@ -8,6 +8,7 @@ export default async function handler(req, res) {
     const showChanges = req.query.show_changes === 'true';
     const showStars = true;
     const uniqueRepos = req.query.unique_repos === 'true';
+    const showRejected = req.query.show_rejected === 'true';
     const repoNameFormat = req.query.repo_name_format === 'short' ? 'short' : 'full';
 
     const badgeWidth = clamp(parseInt(req.query.badge_width, 10) || 830, 700, 1400);
@@ -147,7 +148,13 @@ export default async function handler(req, res) {
             return sendErrorSvg(res, `No Pull Requests found for "${escapeXml(username)}".`, bgColor, borderColor);
         }
 
-        let enrichedPrs = prs;
+        let enrichedPrs = prs.filter((pr) => {
+            const isMerged = Boolean(pr.pull_request && pr.pull_request.merged_at);
+            const isOpen = pr.state === 'open';
+            const isRejected = pr.state === 'closed' && !isMerged;
+            if (showRejected) return isMerged || isOpen || isRejected;
+            return isMerged || isOpen;
+        });
 
         if (uniqueRepos) {
             const latestPerRepo = new Map();

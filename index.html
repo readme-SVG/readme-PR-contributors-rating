@@ -60,7 +60,7 @@
             width: 100%;
             background: var(--gh-canvas);
             color: var(--gh-text);
-            padding: 6px 10px;
+            padding: 7px 10px;
         }
 
         .lang-select {
@@ -70,23 +70,25 @@
         }
 
         .main {
-            max-width: 1280px;
+            max-width: 1320px;
             margin: 20px auto;
             padding: 0 20px 20px;
             display: grid;
-            grid-template-columns: 390px 1fr;
+            grid-template-columns: 470px 1fr;
             gap: 20px;
+            align-items: start;
         }
 
-        @media (max-width: 900px) {
+        @media (max-width: 1024px) {
             .main { grid-template-columns: 1fr; }
         }
 
         .panel {
             background: var(--gh-canvas);
             border: 1px solid var(--gh-border);
-            border-radius: 8px;
+            border-radius: 10px;
             overflow: hidden;
+            box-shadow: 0 1px 2px rgba(27, 31, 36, 0.04);
         }
 
         .panel-header {
@@ -99,7 +101,47 @@
         }
 
         .panel-body { padding: 16px; }
+
+        .config-sections {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .config-section {
+            border: 1px solid var(--gh-border);
+            border-radius: 8px;
+            background: var(--gh-canvas);
+            overflow: hidden;
+        }
+
+        .config-section summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 12px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gh-text);
+            background: #f6f8fa;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .config-section summary::-webkit-details-marker { display: none; }
+        .config-section summary::after {
+            content: '▾';
+            color: var(--gh-muted);
+            font-size: 12px;
+            transform: rotate(-90deg);
+            transition: transform 0.18s ease;
+        }
+
+        .config-section[open] summary::after { transform: rotate(0deg); }
+        .section-body { padding: 14px; }
+
         .form-group { margin-bottom: 14px; }
+        .form-group:last-child { margin-bottom: 0; }
 
         .form-label {
             display: block;
@@ -117,12 +159,22 @@
             gap: 12px;
         }
 
+        @media (max-width: 540px) {
+            .form-row { grid-template-columns: 1fr; }
+        }
+
         .form-input:focus,
         .lang-select:focus,
         .color-hex:focus {
             outline: none;
             border-color: var(--gh-accent);
             box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+        }
+
+        .checkbox-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
         .checkbox-row {
@@ -138,7 +190,6 @@
             height: 16px;
             accent-color: var(--gh-success);
         }
-
 
         .column-order-list {
             display: flex;
@@ -212,12 +263,13 @@
 
         .btn-primary {
             width: 100%;
-            padding: 8px 14px;
+            padding: 9px 14px;
             background: var(--gh-success);
             border-color: rgba(27, 31, 36, 0.15);
             color: #fff;
             font-weight: 600;
             cursor: pointer;
+            margin-top: 12px;
         }
 
         .btn-primary:hover { background: #1f883d; }
@@ -326,160 +378,186 @@
     <div class="panel">
         <div class="panel-header" data-i18n="configTitle">Configuration</div>
         <div class="panel-body">
-            <div class="form-group">
-                <label class="form-label" data-i18n="usernameLabel">GitHub Username</label>
-                <input class="form-input" type="text" id="username" placeholder="username" value="OstinUA">
-            </div>
+            <div class="config-sections">
+                <details class="config-section" open>
+                    <summary>General</summary>
+                    <div class="section-body">
+                        <div class="form-group">
+                            <label class="form-label" for="username" data-i18n="usernameLabel">GitHub Username</label>
+                            <input class="form-input" type="text" id="username" placeholder="username" value="OstinUA">
+                        </div>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="limitLabel">Number of PRs</label>
-                    <input class="form-input" type="number" id="limit" value="7" min="1" max="15">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="themeLabel">Theme</label>
-                    <select class="form-input" id="themePreset" onchange="applyThemePreset(this.value)">
-                        <option value="dark">GitHub Dark</option>
-                        <option value="light">GitHub Light</option>
-                        <option value="dimmed">GitHub Dimmed</option>
-                        <option value="night">Night Blue</option>
-                        <option value="transparent">Transparent</option>
-                        <option value="custom">Custom</option>
-                    </select>
-                </div>
-            </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="limit" data-i18n="limitLabel">Number of PRs</label>
+                                <input class="form-input" type="number" id="limit" value="7" min="1" max="15">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="themePreset" data-i18n="themeLabel">Theme</label>
+                                <select class="form-input" id="themePreset" onchange="applyThemePreset(this.value)">
+                                    <option value="dark">GitHub Dark</option>
+                                    <option value="light">GitHub Light</option>
+                                    <option value="dimmed">GitHub Dimmed</option>
+                                    <option value="night">Night Blue</option>
+                                    <option value="transparent">Transparent</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+                            </div>
+                        </div>
 
-            <div class="form-group">
-                <label class="form-label" data-i18n="columnOrderLabel">Column Order</label>
-                <div class="column-order-list" id="columnOrderList"></div>
-            </div>
+                        <div class="form-group">
+                            <label class="form-label" for="customTitle" data-i18n="customTitleLabel">Custom title</label>
+                            <input class="form-input" type="text" id="customTitle" placeholder="Leave empty for default" maxlength="80">
+                        </div>
 
-            <div class="form-group">
-                <div class="checkbox-row">
-                    <input type="checkbox" id="uniqueRepos">
-                    <label for="uniqueRepos" data-i18n="uniqueReposLabel">Show only unique repositories</label>
-                </div>
-            </div>
+                        <div class="checkbox-stack">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="uniqueRepos">
+                                <label for="uniqueRepos" data-i18n="uniqueReposLabel">Show only unique repositories</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="showRejected">
+                                <label for="showRejected" data-i18n="showRejectedLabel">Show rejected PRs</label>
+                            </div>
+                        </div>
 
-            <div class="form-group">
-                <label class="form-label" data-i18n="repoNameFormatLabel">Repository name format</label>
-                <select class="form-input" id="repoNameFormat">
-                    <option value="full" data-i18n="repoNameFormatFull">Full Name (owner/repo)</option>
-                    <option value="short" data-i18n="repoNameFormatShort">Short Name (repo)</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" data-i18n="customTitleLabel">Custom title</label>
-                <input class="form-input" type="text" id="customTitle" placeholder="Leave empty for default" maxlength="80">
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="repoWidthLabel">Repo Width</label>
-                    <input class="form-input" type="number" id="repoWidth" value="180" min="60" max="500">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="langWidthLabel">Language Width</label>
-                    <input class="form-input" type="number" id="langWidth" value="80" min="60" max="300">
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="prWidthLabel">PR Width</label>
-                    <input class="form-input" type="number" id="prWidth" value="320" min="100" max="900">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="dateWidthLabel">Date Width</label>
-                    <input class="form-input" type="number" id="dateWidth" value="90" min="60" max="300">
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="changesWidthLabel">Changes Width</label>
-                    <input class="form-input" type="number" id="changesWidth" value="100" min="70" max="300">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="starsWidthLabel">Stars Width</label>
-                    <input class="form-input" type="number" id="starsWidth" value="60" min="50" max="240">
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="badgeWidthLabel">Badge width</label>
-                    <input class="form-input" type="number" id="badgeWidth" value="830" min="700" max="1400">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="rowHeightLabel">Row height</label>
-                    <input class="form-input" type="number" id="rowHeight" value="40" min="30" max="60">
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" data-i18n="previewHeightLabel">Preview window height</label>
-                <input class="form-input" type="number" id="previewHeight" value="220" min="120" max="580">
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="bgColorLabel">Background</label>
-                    <div class="color-group">
-                        <input type="color" class="color-input" id="bgColorPicker" value="#0d1117">
-                        <input type="text" class="color-hex" id="bgColor" value="0d1117" maxlength="6">
+                        <div class="form-group" style="margin-top:14px;">
+                            <label class="form-label" for="repoNameFormat" data-i18n="repoNameFormatLabel">Repository name format</label>
+                            <select class="form-input" id="repoNameFormat">
+                                <option value="full" data-i18n="repoNameFormatFull">Full Name (owner/repo)</option>
+                                <option value="short" data-i18n="repoNameFormatShort">Short Name (repo)</option>
+                            </select>
+                        </div>
                     </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="textColorLabel">Text</label>
-                    <div class="color-group">
-                        <input type="color" class="color-input" id="textColorPicker" value="#c9d1d9">
-                        <input type="text" class="color-hex" id="textColor" value="c9d1d9" maxlength="6">
-                    </div>
-                </div>
-            </div>
+                </details>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="titleColorLabel">Title</label>
-                    <div class="color-group">
-                        <input type="color" class="color-input" id="titleColorPicker" value="#58a6ff">
-                        <input type="text" class="color-hex" id="titleColor" value="58a6ff" maxlength="6">
+                <details class="config-section" open>
+                    <summary>Columns</summary>
+                    <div class="section-body">
+                        <div class="form-group">
+                            <label class="form-label" data-i18n="columnOrderLabel">Column Order</label>
+                            <div class="column-order-list" id="columnOrderList"></div>
+                        </div>
                     </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="mutedColorLabel">Muted text</label>
-                    <div class="color-group">
-                        <input type="color" class="color-input" id="mutedColorPicker" value="#8b949e">
-                        <input type="text" class="color-hex" id="mutedColor" value="8b949e" maxlength="6">
-                    </div>
-                </div>
-            </div>
+                </details>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" data-i18n="starColorLabel">Star color</label>
-                    <div class="color-group">
-                        <input type="color" class="color-input" id="starColorPicker" value="#e3b341">
-                        <input type="text" class="color-hex" id="starColor" value="e3b341" maxlength="6">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" data-i18n="borderColorLabel">Border color</label>
-                    <div class="color-group">
-                        <input type="color" class="color-input" id="borderColorPicker" value="#30363d">
-                        <input type="text" class="color-hex" id="borderColor" value="30363d" maxlength="6">
-                    </div>
-                </div>
-            </div>
+                <details class="config-section">
+                    <summary>Dimensions</summary>
+                    <div class="section-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="repoWidth" data-i18n="repoWidthLabel">Repo Width</label>
+                                <input class="form-input" type="number" id="repoWidth" value="180" min="60" max="500">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="langWidth" data-i18n="langWidthLabel">Language Width</label>
+                                <input class="form-input" type="number" id="langWidth" value="80" min="60" max="300">
+                            </div>
+                        </div>
 
-            <div class="form-group">
-                <label class="form-label" data-i18n="shadowColorLabel">Shadow color</label>
-                <div class="color-group">
-                    <input type="color" class="color-input" id="shadowColorPicker" value="#000000">
-                    <input type="text" class="color-hex" id="shadowColor" value="000000" maxlength="6">
-                </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="prWidth" data-i18n="prWidthLabel">PR Width</label>
+                                <input class="form-input" type="number" id="prWidth" value="320" min="100" max="900">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="dateWidth" data-i18n="dateWidthLabel">Date Width</label>
+                                <input class="form-input" type="number" id="dateWidth" value="90" min="60" max="300">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="changesWidth" data-i18n="changesWidthLabel">Changes Width</label>
+                                <input class="form-input" type="number" id="changesWidth" value="100" min="70" max="300">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="starsWidth" data-i18n="starsWidthLabel">Stars Width</label>
+                                <input class="form-input" type="number" id="starsWidth" value="60" min="50" max="240">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="badgeWidth" data-i18n="badgeWidthLabel">Badge width</label>
+                                <input class="form-input" type="number" id="badgeWidth" value="830" min="700" max="1400">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="rowHeight" data-i18n="rowHeightLabel">Row height</label>
+                                <input class="form-input" type="number" id="rowHeight" value="40" min="30" max="60">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="previewHeight" data-i18n="previewHeightLabel">Preview window height</label>
+                            <input class="form-input" type="number" id="previewHeight" value="220" min="120" max="580">
+                        </div>
+                    </div>
+                </details>
+
+                <details class="config-section">
+                    <summary>Colors</summary>
+                    <div class="section-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="bgColor" data-i18n="bgColorLabel">Background</label>
+                                <div class="color-group">
+                                    <input type="color" class="color-input" id="bgColorPicker" value="#0d1117">
+                                    <input type="text" class="color-hex" id="bgColor" value="0d1117" maxlength="6">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="textColor" data-i18n="textColorLabel">Text</label>
+                                <div class="color-group">
+                                    <input type="color" class="color-input" id="textColorPicker" value="#c9d1d9">
+                                    <input type="text" class="color-hex" id="textColor" value="c9d1d9" maxlength="6">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="titleColor" data-i18n="titleColorLabel">Title</label>
+                                <div class="color-group">
+                                    <input type="color" class="color-input" id="titleColorPicker" value="#58a6ff">
+                                    <input type="text" class="color-hex" id="titleColor" value="58a6ff" maxlength="6">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="mutedColor" data-i18n="mutedColorLabel">Muted text</label>
+                                <div class="color-group">
+                                    <input type="color" class="color-input" id="mutedColorPicker" value="#8b949e">
+                                    <input type="text" class="color-hex" id="mutedColor" value="8b949e" maxlength="6">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="starColor" data-i18n="starColorLabel">Star color</label>
+                                <div class="color-group">
+                                    <input type="color" class="color-input" id="starColorPicker" value="#e3b341">
+                                    <input type="text" class="color-hex" id="starColor" value="e3b341" maxlength="6">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="borderColor" data-i18n="borderColorLabel">Border color</label>
+                                <div class="color-group">
+                                    <input type="color" class="color-input" id="borderColorPicker" value="#30363d">
+                                    <input type="text" class="color-hex" id="borderColor" value="30363d" maxlength="6">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="shadowColor" data-i18n="shadowColorLabel">Shadow color</label>
+                            <div class="color-group">
+                                <input type="color" class="color-input" id="shadowColorPicker" value="#000000">
+                                <input type="text" class="color-hex" id="shadowColor" value="000000" maxlength="6">
+                            </div>
+                        </div>
+                    </div>
+                </details>
             </div>
 
             <div class="form-group">
@@ -701,6 +779,7 @@ function buildBadgeUrl() {
     const borderColor = document.getElementById('borderColor').value;
     const shadowColor = document.getElementById('shadowColor').value;
     const uniqueRepos = document.getElementById('uniqueRepos').checked;
+    const showRejected = document.getElementById('showRejected').checked;
     const repoNameFormat = document.getElementById('repoNameFormat').value;
 
     const customTitleVal = document.getElementById('customTitle').value.trim();
@@ -715,6 +794,7 @@ function buildBadgeUrl() {
     params.set('show_lang', byKey.lang ? 'true' : 'false');
     params.set('show_changes', byKey.changes ? 'true' : 'false');
     if (uniqueRepos) params.set('unique_repos', 'true');
+    if (showRejected) params.set('show_rejected', 'true');
     if (repoNameFormat !== 'full') params.set('repo_name_format', repoNameFormat);
     params.set('col_order', colOrder);
     if (badgeWidth !== '830') params.set('badge_width', badgeWidth);
