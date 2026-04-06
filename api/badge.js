@@ -44,56 +44,110 @@ export default async function handler(req, res) {
         : { 'User-Agent': 'readme-pr-badge' };
 
     try {
-        const prsResponse = await fetch(
-            `https://api.github.com/search/issues?q=is:pr+author:${username}&sort=created&order=desc&per_page=30`,
-            { headers }
-        );
+        const graphqlQuery = `
+            query FetchUserPrs($query: String!, $first: Int!, $after: String) {
+                search(query: $query, type: ISSUE, first: $first, after: $after) {
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
+                    nodes {
+                        ... on PullRequest {
+                            id
+                            title
+                            url
+                            createdAt
+                            state
+                            mergedAt
+                            additions
+                            deletions
+                            repository {
+                                url
+                                stargazerCount
+                                primaryLanguage {
+                                    name
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        `;
 
-        if (prsResponse.status === 403 || prsResponse.status === 429) {
-            return sendErrorSvg(res, 'API rate limit exceeded. Please try again later.', bgColor, borderColor);
+        const maxPages = 5;
+        const perPage = 100;
+        let hasNextPage = true;
+        let cursor = null;
+        let currentPage = 0;
+        const prs = [];
+
+        while (hasNextPage && currentPage < maxPages) {
+            const graphqlResponse = await fetch('https://api.github.com/graphql', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: graphqlQuery,
+                    variables: {
+                        query: `is:pr author:${username} sort:created-desc`,
+                        first: perPage,
+                        after: cursor
+                    }
+                })
+            });
+
+            if (graphqlResponse.status === 401 || graphqlResponse.status === 403 || graphqlResponse.status === 429) {
+                return sendErrorSvg(res, 'API rate limit exceeded. Please try again later.', bgColor, borderColor);
+            }
+
+            if (!graphqlResponse.ok) {
+                return sendErrorSvg(res, `GitHub API error (${graphqlResponse.status}).`, bgColor, borderColor);
+            }
+
+            const graphqlData = await graphqlResponse.json();
+            if (Array.isArray(graphqlData.errors) && graphqlData.errors.length) {
+                const combinedMessage = graphqlData.errors.map((e) => e.message).join(' ');
+                if (/Could not resolve to a User/i.test(combinedMessage)) {
+                    return sendErrorSvg(res, `User "${escapeXml(username)}" not found.`, bgColor, borderColor);
+                }
+                if (/rate limit|abuse/i.test(combinedMessage)) {
+                    return sendErrorSvg(res, 'API rate limit exceeded. Please try again later.', bgColor, borderColor);
+                }
+                return sendErrorSvg(res, 'GitHub GraphQL query failed.', bgColor, borderColor);
+            }
+
+            const search = graphqlData.data && graphqlData.data.search;
+            if (!search) {
+                return sendErrorSvg(res, 'GitHub GraphQL query failed.', bgColor, borderColor);
+            }
+
+            const nodes = Array.isArray(search.nodes) ? search.nodes : [];
+            for (const node of nodes) {
+                if (!node || !node.repository) continue;
+                prs.push({
+                    id: node.id,
+                    title: node.title || '',
+                    html_url: node.url || '',
+                    created_at: node.createdAt,
+                    state: (node.state || '').toLowerCase(),
+                    pull_request: { merged_at: node.mergedAt },
+                    repository_url: node.repository.url || '',
+                    repoStars: node.repository.stargazerCount || 0,
+                    repoLanguage: node.repository.primaryLanguage ? node.repository.primaryLanguage.name : null,
+                    additions: node.additions || 0,
+                    deletions: node.deletions || 0
+                });
+            }
+
+            hasNextPage = Boolean(search.pageInfo && search.pageInfo.hasNextPage);
+            cursor = search.pageInfo ? search.pageInfo.endCursor : null;
+            currentPage += 1;
         }
-
-        if (prsResponse.status === 422) {
-            return sendErrorSvg(res, `User "${escapeXml(username)}" not found.`, bgColor, borderColor);
-        }
-
-        if (!prsResponse.ok) {
-            return sendErrorSvg(res, `GitHub API error (${prsResponse.status}).`, bgColor, borderColor);
-        }
-
-        const prsData = await prsResponse.json();
-        let prs = prsData.items || [];
 
         if (prs.length === 0) {
             return sendErrorSvg(res, `No Pull Requests found for "${escapeXml(username)}".`, bgColor, borderColor);
         }
 
-        const uniqueRepoUrls = [...new Set(prs.map(pr => pr.repository_url))].slice(0, 20);
-        const repoStats = {};
-
-        const repoResults = await Promise.allSettled(
-            uniqueRepoUrls.map(async (url) => {
-                const repoRes = await fetch(url, { headers });
-                if (!repoRes.ok) return { url, stars: 0, language: null };
-                const repoData = await repoRes.json();
-                return { url, stars: repoData.stargazers_count || 0, language: repoData.language || null };
-            })
-        );
-
-        for (const result of repoResults) {
-            if (result.status === 'fulfilled') {
-                repoStats[result.value.url] = {
-                    stars: result.value.stars,
-                    language: result.value.language
-                };
-            }
-        }
-
-        let enrichedPrs = prs.map(pr => ({
-            ...pr,
-            repoStars: (repoStats[pr.repository_url] || {}).stars || 0,
-            repoLanguage: (repoStats[pr.repository_url] || {}).language || null
-        }));
+        let enrichedPrs = prs;
 
         if (uniqueRepos) {
             const latestPerRepo = new Map();
@@ -109,36 +163,6 @@ export default async function handler(req, res) {
         enrichedPrs.sort((a, b) => b.repoStars - a.repoStars);
 
         const sortedPrs = enrichedPrs.slice(0, limit);
-
-        if (showChanges) {
-            const prDetailResults = await Promise.allSettled(
-                sortedPrs.map(async (pr) => {
-                    const prApiUrl = pr.pull_request && pr.pull_request.url;
-                    if (!prApiUrl) return { id: pr.id, additions: 0, deletions: 0 };
-                    try {
-                        const prRes = await fetch(prApiUrl, { headers });
-                        if (!prRes.ok) return { id: pr.id, additions: 0, deletions: 0 };
-                        const prData = await prRes.json();
-                        return { id: pr.id, additions: prData.additions || 0, deletions: prData.deletions || 0 };
-                    } catch {
-                        return { id: pr.id, additions: 0, deletions: 0 };
-                    }
-                })
-            );
-
-            const detailMap = {};
-            for (const result of prDetailResults) {
-                if (result.status === 'fulfilled') {
-                    detailMap[result.value.id] = result.value;
-                }
-            }
-
-            for (const pr of sortedPrs) {
-                const detail = detailMap[pr.id] || {};
-                pr.additions = detail.additions || 0;
-                pr.deletions = detail.deletions || 0;
-            }
-        }
 
         const svg = buildSvg(sortedPrs, username, {
             showPr,
