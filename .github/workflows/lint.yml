@@ -1,0 +1,59 @@
+name: Lint and Static Checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: read-all
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          if [ ! -f package.json ]; then
+            echo "No package.json found. Skipping npm install."
+            exit 0
+          fi
+          if [ -f package-lock.json ]; then
+            echo "package-lock.json found. Running fast install (npm ci)..."
+            npm ci
+          else
+            echo "package-lock.json NOT found. Generating it (npm install)..."
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Run project lint script when available
+        run: |
+          if [ -f package.json ]; then
+            npm run lint --if-present
+          else
+            echo "No package.json found. Skipping lint."
+          fi
+
+      - name: Validate JavaScript syntax
+        run: |
+          if [ -d api ]; then
+            while IFS= read -r -d '' file; do
+              node --check "$file"
+            done < <(find api -type f -name '*.js' -print0)
+          else
+            echo "No api/ directory found. Skipping JavaScript syntax validation."
+          fi
