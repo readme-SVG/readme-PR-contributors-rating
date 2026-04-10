@@ -1,0 +1,82 @@
+# Severity labels — used by trigger_action.py (7-level scale)
+- name: "severity: critical"
+  color: "B60205"
+  description: "Production-breaking, security vulnerabilities, data loss risk"
+
+- name: "severity: high"
+  color: "D93F0B"
+  description: "Core logic changes, API modifications, breaking changes"
+
+- name: "severity: elevated"
+  color: "E36209"
+  description: "New features or modules, large refactors, external integrations"
+
+- name: "severity: medium"
+  color: "E4E669"
+  description: "New helpers, CI/CD changes, config changes, dependency updates"
+
+- name: "severity: moderate"
+  color: "B4D455"
+  description: "Minor feature additions, validation improvements, small behavioral changes"
+
+- name: "severity: low"
+  color: "0E8A16"
+  description: "Documentation updates, cosmetic changes, formatting fixes"
+
+- name: "severity: informational"
+  color: "C5DEF5"
+  description: "Trivial changes — typos, whitespace, comment rewording"
+
+# Type labels — standard issue/PR classification
+- name: "bug"
+  color: "D73A4A"
+  description: "Something isn't working"
+
+- name: "enhancement"
+  color: "A2EEEF"
+  description: "New feature or request"
+
+- name: "documentation"
+  color: "0075CA"
+  description: "Improvements or additions to documentation"
+
+- name: "security"
+  color: "E11D48"
+  description: "Security vulnerability or audit finding"
+
+- name: "performance"
+  color: "F9D0C4"
+  description: "Performance or optimization issue"
+
+- name: "refactor"
+  color: "D4C5F9"
+  description: "Code quality or structural improvement"
+
+- name: "dependencies"
+  color: "0366D6"
+  description: "Dependency update (Dependabot or manual)"
+
+# Workflow labels
+- name: "ai-generated"
+  color: "6F42C1"
+  description: "Automatically created by the AI Issue Generator"
+
+- name: "needs triage"
+  color: "FBCA04"
+  description: "Awaiting first review and classification"
+
+- name: "wontfix"
+  color: "FFFFFF"
+  description: "This will not be worked on"
+
+- name: "duplicate"
+  color: "CFD3D7"
+  description: "This issue or pull request already exists"
+
+- name: "good first issue"
+  color: "7057FF"
+  description: "Good for newcomers"
+
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention is needed"
