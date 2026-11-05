@@ -9,6 +9,7 @@ window.__I18N['en'] = {
   showDateLabel: 'Show date',
   showLangLabel: 'Show language',
   showChangesLabel: 'Show changes',
+  showRejectedLabel: 'Show rejected PRs',
   columnOrderLabel: 'Column Order',
   uniqueReposLabel: 'Show only unique repositories',
   repoNameFormatLabel: 'Repository name format',
@@ -37,5 +38,8 @@ window.__I18N['en'] = {
   markdownLabel: 'Markdown for README.md',
   copyBtn: 'Copy',
   copiedBtn: 'Copied!',
+  downloadBtn: 'Download SVG',
   errorFetch: 'Failed to load badge. Check the username or try again later.',
+  footerDocs: 'Documentation',
+  footerIssue: 'Report an issue',
 };

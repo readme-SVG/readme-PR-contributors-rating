@@ -2,7 +2,22 @@
   "name": "github-pr-stars-badge",
   "version": "1.0.0",
   "description": "Dynamic SVG badge showing top GitHub PRs sorted by repository stars",
+  "type": "module",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/readme-SVG/readme-PR-contributors-rating.git"
+  },
+  "bugs": {
+    "url": "https://github.com/readme-SVG/readme-PR-contributors-rating/issues"
+  },
+  "homepage": "https://github.com/readme-SVG/readme-PR-contributors-rating#readme",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "start": "node api/badge.js"
+    "lint": "node --check api/badge.js && node --check i18n/validate.js && npm run validate:i18n",
+    "validate:i18n": "node scripts/validate-i18n.mjs"
   }
 }
