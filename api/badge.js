@@ -1,213 +1,51 @@
-export default async function handler(req, res) {
-    const username = sanitizeUsername(req.query.username || 'OstinUA');
-    const limit = clamp(parseInt(req.query.limit, 10) || 7, 1, 15);
-    const showPr = req.query.show_pr !== 'false';
-    const showDate = req.query.show_date !== 'false';
-    const showRepo = true;
-    const showLang = req.query.show_lang === 'true';
-    const showChanges = req.query.show_changes === 'true';
-    const showStars = true;
-    const uniqueRepos = req.query.unique_repos === 'true';
-    const showRejected = req.query.show_rejected === 'true';
-    const repoNameFormat = req.query.repo_name_format === 'short' ? 'short' : 'full';
+/**
+ * Vercel serverless handler that renders a configurable SVG badge with the
+ * top pull requests of a GitHub user, ordered by repository star count.
+ *
+ * The module is organized in five sections:
+ *   1. Constants           – defaults, limits and static lookup tables.
+ *   2. Request parsing     – defensive parsing of every query parameter.
+ *   3. GitHub API client   – paginated GraphQL search with timeout and a
+ *                            small in-memory cache to shield the upstream.
+ *   4. SVG rendering       – layout computation and markup generation.
+ *   5. HTTP helpers        – response writers for success and error badges.
+ *
+ * All user-controlled values are either whitelisted, clamped to a numeric
+ * range, or XML-escaped before they reach the SVG output.
+ */
 
-    const badgeWidth = clamp(parseInt(req.query.badge_width, 10) || 830, 700, 1400);
-    const rowHeight = clamp(parseInt(req.query.row_height, 10) || 40, 30, 60);
-    const repoWidth = clamp(parseInt(req.query.repo_width, 10) || 180, 60, 500);
-    const langWidth = clamp(parseInt(req.query.lang_width, 10) || 80, 60, 300);
-    const prWidth = clamp(parseInt(req.query.pr_width, 10) || 320, 100, 900);
-    const dateWidth = clamp(parseInt(req.query.date_width, 10) || 90, 60, 300);
-    const changesWidth = clamp(parseInt(req.query.changes_width, 10) || 100, 70, 300);
-    const starsWidth = clamp(parseInt(req.query.stars_width, 10) || 60, 50, 240);
+// ---------------------------------------------------------------------------
+// 1. Constants
+// ---------------------------------------------------------------------------
 
-    const validOrderKeys = ['pr', 'date', 'lang', 'changes'];
-    const defaultColOrder = ['pr', 'date', 'lang', 'changes'];
-    const parsedColOrder = String(req.query.col_order || '')
-        .split(',')
-        .map((key) => key.trim())
-        .filter((key, idx, arr) => validOrderKeys.includes(key) && arr.indexOf(key) === idx);
-    const colOrder = parsedColOrder.length ? parsedColOrder : defaultColOrder;
+const GRAPHQL_ENDPOINT = 'https://api.github.com/graphql';
 
-    const customTitle = req.query.custom_title ? sanitizeText(req.query.custom_title, 80) : '';
+/** Maximum number of search pages fetched per request (100 nodes each). */
+const MAX_PAGES = 5;
+const PAGE_SIZE = 100;
 
-    const bgColor = sanitizeHex(req.query.bg_color, '0d1117');
-    const textColor = sanitizeHex(req.query.text_color, 'c9d1d9');
-    const titleColor = sanitizeHex(req.query.title_color, '58a6ff');
-    const mutedColor = sanitizeHex(req.query.muted_color, '8b949e');
-    const starColor = sanitizeHex(req.query.star_color, 'e3b341');
-    const borderColor = sanitizeHex(req.query.border_color, '30363d');
-    const shadowColor = sanitizeHex(req.query.shadow_color, '000000');
-    const transparent = req.query.transparent === 'true';
+/** Per-request timeout for upstream GitHub API calls, in milliseconds. */
+const UPSTREAM_TIMEOUT_MS = 10_000;
 
-    const token = process.env.GITHUB_TOKEN;
-    const headers = token
-        ? { Authorization: `token ${token}`, 'User-Agent': 'readme-pr-badge' }
-        : { 'User-Agent': 'readme-pr-badge' };
+/**
+ * Warm-instance cache for raw pull request pages, keyed by GitHub username.
+ * Serverless instances are short-lived, so this is a best-effort optimization
+ * that mainly protects the upstream API from bursty README traffic.
+ */
+const PR_CACHE_TTL_MS = 10 * 60 * 1000;
+const PR_CACHE_MAX_ENTRIES = 200;
+const prCache = new Map();
 
-    try {
-        const graphqlQuery = `
-            query FetchUserPrs($query: String!, $first: Int!, $after: String) {
-                search(query: $query, type: ISSUE, first: $first, after: $after) {
-                    pageInfo {
-                        hasNextPage
-                        endCursor
-                    }
-                    nodes {
-                        ... on PullRequest {
-                            id
-                            title
-                            url
-                            createdAt
-                            state
-                            mergedAt
-                            additions
-                            deletions
-                            repository {
-                                url
-                                stargazerCount
-                                primaryLanguage {
-                                    name
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        `;
+/** Cache-Control applied to successfully rendered badges (2 days). */
+const CACHE_CONTROL_OK = 'public, s-maxage=172800, stale-while-revalidate=86400';
+/** Cache-Control applied to error badges (kept short so retries recover fast). */
+const CACHE_CONTROL_ERROR = 'public, s-maxage=300, stale-while-revalidate=60';
 
-        const maxPages = 5;
-        const perPage = 100;
-        let hasNextPage = true;
-        let cursor = null;
-        let currentPage = 0;
-        const prs = [];
-
-        while (hasNextPage && currentPage < maxPages) {
-            const graphqlResponse = await fetch('https://api.github.com/graphql', {
-                method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    query: graphqlQuery,
-                    variables: {
-                        query: `is:pr author:${username} sort:created-desc`,
-                        first: perPage,
-                        after: cursor
-                    }
-                })
-            });
-
-            if (graphqlResponse.status === 401 || graphqlResponse.status === 403 || graphqlResponse.status === 429) {
-                return sendErrorSvg(res, 'API rate limit exceeded. Please try again later.', bgColor, borderColor);
-            }
-
-            if (!graphqlResponse.ok) {
-                return sendErrorSvg(res, `GitHub API error (${graphqlResponse.status}).`, bgColor, borderColor);
-            }
-
-            const graphqlData = await graphqlResponse.json();
-            if (Array.isArray(graphqlData.errors) && graphqlData.errors.length) {
-                const combinedMessage = graphqlData.errors.map((e) => e.message).join(' ');
-                if (/Could not resolve to a User/i.test(combinedMessage)) {
-                    return sendErrorSvg(res, `User "${escapeXml(username)}" not found.`, bgColor, borderColor);
-                }
-                if (/rate limit|abuse/i.test(combinedMessage)) {
-                    return sendErrorSvg(res, 'API rate limit exceeded. Please try again later.', bgColor, borderColor);
-                }
-                return sendErrorSvg(res, 'GitHub GraphQL query failed.', bgColor, borderColor);
-            }
-
-            const search = graphqlData.data && graphqlData.data.search;
-            if (!search) {
-                return sendErrorSvg(res, 'GitHub GraphQL query failed.', bgColor, borderColor);
-            }
-
-            const nodes = Array.isArray(search.nodes) ? search.nodes : [];
-            for (const node of nodes) {
-                if (!node || !node.repository) continue;
-                prs.push({
-                    id: node.id,
-                    title: node.title || '',
-                    html_url: node.url || '',
-                    created_at: node.createdAt,
-                    state: (node.state || '').toLowerCase(),
-                    pull_request: { merged_at: node.mergedAt },
-                    repository_url: node.repository.url || '',
-                    repoStars: node.repository.stargazerCount || 0,
-                    repoLanguage: node.repository.primaryLanguage ? node.repository.primaryLanguage.name : null,
-                    additions: node.additions || 0,
-                    deletions: node.deletions || 0
-                });
-            }
-
-            hasNextPage = Boolean(search.pageInfo && search.pageInfo.hasNextPage);
-            cursor = search.pageInfo ? search.pageInfo.endCursor : null;
-            currentPage += 1;
-        }
-
-        if (prs.length === 0) {
-            return sendErrorSvg(res, `No Pull Requests found for "${escapeXml(username)}".`, bgColor, borderColor);
-        }
-
-        let enrichedPrs = prs.filter((pr) => {
-            const isMerged = Boolean(pr.pull_request && pr.pull_request.merged_at);
-            const isOpen = pr.state === 'open';
-            const isRejected = pr.state === 'closed' && !isMerged;
-            if (showRejected) return isMerged || isOpen || isRejected;
-            return isMerged || isOpen;
-        });
-
-        if (uniqueRepos) {
-            const latestPerRepo = new Map();
-            for (const pr of enrichedPrs) {
-                const existing = latestPerRepo.get(pr.repository_url);
-                if (!existing || new Date(pr.created_at) > new Date(existing.created_at)) {
-                    latestPerRepo.set(pr.repository_url, pr);
-                }
-            }
-            enrichedPrs = [...latestPerRepo.values()];
-        }
-
-        enrichedPrs.sort((a, b) => b.repoStars - a.repoStars);
-
-        const sortedPrs = enrichedPrs.slice(0, limit);
-
-        const svg = buildSvg(sortedPrs, username, {
-            showPr,
-            showDate,
-            showRepo,
-            showLang,
-            showChanges,
-            showStars,
-            repoNameFormat,
-            colOrder,
-            badgeWidth,
-            rowHeight,
-            repoWidth,
-            langWidth,
-            prWidth,
-            dateWidth,
-            changesWidth,
-            starsWidth,
-            bgColor,
-            textColor,
-            titleColor,
-            mutedColor,
-            starColor,
-            borderColor,
-            shadowColor,
-            transparent,
-            customTitle
-        });
-
-        res.setHeader('Content-Type', 'image/svg+xml');
-        res.setHeader('Cache-Control', 's-maxage=172800, stale-while-revalidate');
-        res.status(200).send(svg);
-    } catch (error) {
-        console.error(error);
-        sendErrorSvg(res, 'Error generating badge. Please try again.', bgColor, borderColor);
-    }
-}
-
+/**
+ * GitHub's primary language colors, mirrored from
+ * https://github.com/github/linguist/blob/main/lib/linguist/languages.yml
+ * for the most common languages.
+ */
 const LANG_COLORS = {
     'JavaScript': '#f1e05a',
     'TypeScript': '#3178c6',
@@ -238,18 +76,93 @@ const LANG_COLORS = {
     'Zig': '#ec915c'
 };
 
-function sanitizeUsername(input) {
-    return input.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 39);
+const DEFAULT_LANGUAGE_COLOR = '#8b949e';
+
+/** Octicon paths used for the PR status and star icons (16x16 viewBox). */
+const ICONS = {
+    merged: {
+        color: '#a371f7',
+        path: 'M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z'
+    },
+    open: {
+        color: '#3fb950',
+        path: 'M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.25 2.25 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854v4.792a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm.75-2.25a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5Z'
+    },
+    closed: {
+        color: '#f85149',
+        path: 'M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.25 2.25 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854v4.792a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z'
+    },
+    star: {
+        path: 'M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z'
+    }
+};
+
+const FONT_STACK = 'Segoe UI, Helvetica, Arial, sans-serif';
+
+/** Fixed layout metrics (pixels) shared by the header and every row. */
+const LAYOUT = {
+    leftPad: 20,
+    rightPad: 20,
+    iconWidth: 24,
+    iconGap: 8,
+    colGap: 12,
+    headerY: 75,
+    headerLineY: 85,
+    firstRowY: 110,
+    titleY: 35,
+    repoMinWidth: 60,
+    columnMinWidth: 50
+};
+
+/** Column keys accepted in the `col_order` query parameter, in default order. */
+const COLUMN_KEYS = ['pr', 'date', 'lang', 'changes'];
+
+const DEFAULTS = {
+    username: 'OstinUA',
+    limit: 7,
+    badgeWidth: 830,
+    rowHeight: 40,
+    repoWidth: 180,
+    langWidth: 80,
+    prWidth: 320,
+    dateWidth: 90,
+    changesWidth: 100,
+    starsWidth: 60,
+    colors: {
+        bg: '0d1117',
+        text: 'c9d1d9',
+        title: '58a6ff',
+        muted: '8b949e',
+        star: 'e3b341',
+        border: '30363d',
+        shadow: '000000'
+    }
+};
+
+// ---------------------------------------------------------------------------
+// 2. Request parsing
+// ---------------------------------------------------------------------------
+
+/**
+ * Read a single-valued query parameter. Vercel parses repeated parameters
+ * (e.g. `?limit=1&limit=2`) into arrays; the first value wins.
+ */
+function queryParam(query, key) {
+    const value = query[key];
+    return Array.isArray(value) ? value[0] : value;
 }
 
-function sanitizeText(input, maxLen) {
-    return String(input).replace(/[^\w\s\-.,!?()@#&:;'/]/g, '').slice(0, maxLen);
+function parseBool(query, key, defaultValue) {
+    const value = queryParam(query, key);
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return defaultValue;
 }
 
-function sanitizeHex(input, fallback) {
-    if (!input) return fallback;
-    const cleaned = input.replace(/^#/, '').replace(/[^a-fA-F0-9]/g, '');
-    return /^[a-fA-F0-9]{3,8}$/.test(cleaned) ? cleaned : fallback;
+function parseIntInRange(raw, fallback, min, max) {
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return clamp(parsed, min, max);
 }
 
 function clamp(value, min, max) {
@@ -257,8 +170,286 @@ function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
 
-function escapeXml(str) {
-    return String(str)
+/** Restrict a GitHub login to its legal character set and length. */
+function sanitizeUsername(input) {
+    return String(input).replace(/[^a-zA-Z0-9-]/g, '').slice(0, 39);
+}
+
+/** Strip characters that carry no meaning in a badge title, then cap length. */
+function sanitizeText(input, maxLength) {
+    return String(input)
+        .replace(/[^\w\s\-.,!?()@#&:;'/]/g, '')
+        .trim()
+        .slice(0, maxLength);
+}
+
+/**
+ * Validate a hex color literal. Accepts 3, 4, 6 and 8 digit forms (RGB,
+ * RGBA and their shorthand); anything else falls back to the default.
+ */
+function sanitizeHex(input, fallback) {
+    if (typeof input !== 'string') return fallback;
+    const cleaned = input.replace(/^#/, '');
+    return /^[a-fA-F0-9]{3}$|^[a-fA-F0-9]{4}$|^[a-fA-F0-9]{6}$|^[a-fA-F0-9]{8}$/.test(cleaned)
+        ? cleaned
+        : fallback;
+}
+
+/**
+ * Parse the `col_order` parameter into a deduplicated list of known column
+ * keys, falling back to the default order when nothing valid is provided.
+ */
+function parseColumnOrder(raw) {
+    const parsed = String(raw || '')
+        .split(',')
+        .map((key) => key.trim().toLowerCase())
+        .filter((key, index, arr) => COLUMN_KEYS.includes(key) && arr.indexOf(key) === index);
+    return parsed.length ? parsed : [...COLUMN_KEYS];
+}
+
+/**
+ * Translate the incoming request into a fully validated options object.
+ * No value returned here requires further sanitization before rendering,
+ * except free-form text (title), which is escaped at render time.
+ */
+function parseOptions(query) {
+    return {
+        username: sanitizeUsername(queryParam(query, 'username') || DEFAULTS.username),
+        limit: parseIntInRange(queryParam(query, 'limit'), DEFAULTS.limit, 1, 15),
+        showPr: parseBool(query, 'show_pr', true),
+        showDate: parseBool(query, 'show_date', true),
+        showLang: parseBool(query, 'show_lang', false),
+        showChanges: parseBool(query, 'show_changes', false),
+        uniqueRepos: parseBool(query, 'unique_repos', false),
+        showRejected: parseBool(query, 'show_rejected', false),
+        repoNameFormat: queryParam(query, 'repo_name_format') === 'short' ? 'short' : 'full',
+        colOrder: parseColumnOrder(queryParam(query, 'col_order')),
+        customTitle: sanitizeText(queryParam(query, 'custom_title') || '', 80),
+        badgeWidth: parseIntInRange(queryParam(query, 'badge_width'), DEFAULTS.badgeWidth, 700, 1400),
+        rowHeight: parseIntInRange(queryParam(query, 'row_height'), DEFAULTS.rowHeight, 30, 60),
+        repoWidth: parseIntInRange(queryParam(query, 'repo_width'), DEFAULTS.repoWidth, 60, 500),
+        langWidth: parseIntInRange(queryParam(query, 'lang_width'), DEFAULTS.langWidth, 60, 300),
+        prWidth: parseIntInRange(queryParam(query, 'pr_width'), DEFAULTS.prWidth, 100, 900),
+        dateWidth: parseIntInRange(queryParam(query, 'date_width'), DEFAULTS.dateWidth, 60, 300),
+        changesWidth: parseIntInRange(queryParam(query, 'changes_width'), DEFAULTS.changesWidth, 70, 300),
+        starsWidth: parseIntInRange(queryParam(query, 'stars_width'), DEFAULTS.starsWidth, 50, 240),
+        colors: {
+            bg: sanitizeHex(queryParam(query, 'bg_color'), DEFAULTS.colors.bg),
+            text: sanitizeHex(queryParam(query, 'text_color'), DEFAULTS.colors.text),
+            title: sanitizeHex(queryParam(query, 'title_color'), DEFAULTS.colors.title),
+            muted: sanitizeHex(queryParam(query, 'muted_color'), DEFAULTS.colors.muted),
+            star: sanitizeHex(queryParam(query, 'star_color'), DEFAULTS.colors.star),
+            border: sanitizeHex(queryParam(query, 'border_color'), DEFAULTS.colors.border),
+            shadow: sanitizeHex(queryParam(query, 'shadow_color'), DEFAULTS.colors.shadow)
+        },
+        transparent: parseBool(query, 'transparent', false)
+    };
+}
+
+// ---------------------------------------------------------------------------
+// 3. GitHub API client
+// ---------------------------------------------------------------------------
+
+/** Thrown for expected upstream failures; carries a user-visible message. */
+class BadgeUpstreamError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'BadgeUpstreamError';
+    }
+}
+
+const PULL_REQUEST_SEARCH_QUERY = `
+    query FetchUserPrs($query: String!, $first: Int!, $after: String) {
+        search(query: $query, type: ISSUE, first: $first, after: $after) {
+            pageInfo {
+                hasNextPage
+                endCursor
+            }
+            nodes {
+                ... on PullRequest {
+                    id
+                    title
+                    url
+                    createdAt
+                    state
+                    mergedAt
+                    additions
+                    deletions
+                    repository {
+                        url
+                        stargazerCount
+                        primaryLanguage {
+                            name
+                        }
+                    }
+                }
+            }
+        }
+    }
+`;
+
+function buildAuthHeaders() {
+    const token = process.env.GITHUB_TOKEN;
+    const headers = { 'User-Agent': 'readme-pr-contributors-rating' };
+    if (token) {
+        headers.Authorization = `token ${token}`;
+    }
+    return headers;
+}
+
+/** Evict expired entries, then trim the cache to its maximum size (FIFO). */
+function pruneCache() {
+    const now = Date.now();
+    for (const [key, entry] of prCache) {
+        if (now - entry.timestamp >= PR_CACHE_TTL_MS) {
+            prCache.delete(key);
+        }
+    }
+    while (prCache.size > PR_CACHE_MAX_ENTRIES) {
+        prCache.delete(prCache.keys().next().value);
+    }
+}
+
+/**
+ * Fetch every pull request authored by `username` (up to MAX_PAGES pages)
+ * through the GitHub GraphQL search API. Results are cached per username for
+ * a short TTL to absorb repeated README hits served by the same instance.
+ *
+ * @param {string} username Sanitized GitHub login.
+ * @returns {Promise<Array<object>>} Normalized pull request records.
+ * @throws {BadgeUpstreamError} On rate limits, auth failures or API errors.
+ */
+async function fetchUserPullRequests(username) {
+    const cached = prCache.get(username);
+    if (cached && Date.now() - cached.timestamp < PR_CACHE_TTL_MS) {
+        return cached.prs;
+    }
+
+    const headers = { ...buildAuthHeaders(), 'Content-Type': 'application/json' };
+    const prs = [];
+    let cursor = null;
+    let hasNextPage = true;
+    let page = 0;
+
+    while (hasNextPage && page < MAX_PAGES) {
+        let response;
+        try {
+            response = await fetch(GRAPHQL_ENDPOINT, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    query: PULL_REQUEST_SEARCH_QUERY,
+                    variables: {
+                        query: `is:pr author:${username} sort:created-desc`,
+                        first: PAGE_SIZE,
+                        after: cursor
+                    }
+                }),
+                signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+            });
+        } catch (error) {
+            if (error && error.name === 'TimeoutError') {
+                throw new BadgeUpstreamError('GitHub API request timed out. Please try again later.');
+            }
+            throw error;
+        }
+
+        if (response.status === 401) {
+            // The deployment token is invalid or revoked — not the viewer's fault,
+            // but there is nothing actionable they can do either.
+            throw new BadgeUpstreamError('GitHub API authentication failed.');
+        }
+        if (response.status === 403 || response.status === 429) {
+            throw new BadgeUpstreamError('API rate limit exceeded. Please try again later.');
+        }
+        if (!response.ok) {
+            throw new BadgeUpstreamError(`GitHub API error (${response.status}).`);
+        }
+
+        const payload = await response.json();
+        if (Array.isArray(payload.errors) && payload.errors.length) {
+            const combined = payload.errors.map((entry) => entry.message).join(' ');
+            if (/Could not resolve to a User/i.test(combined)) {
+                throw new BadgeUpstreamError(`User "${username}" not found.`);
+            }
+            if (/rate limit|abuse/i.test(combined)) {
+                throw new BadgeUpstreamError('API rate limit exceeded. Please try again later.');
+            }
+            throw new BadgeUpstreamError('GitHub GraphQL query failed.');
+        }
+
+        const search = payload.data && payload.data.search;
+        if (!search) {
+            throw new BadgeUpstreamError('GitHub GraphQL query failed.');
+        }
+
+        for (const node of Array.isArray(search.nodes) ? search.nodes : []) {
+            if (!node || !node.repository) continue;
+            prs.push(normalizePullRequest(node));
+        }
+
+        hasNextPage = Boolean(search.pageInfo && search.pageInfo.hasNextPage);
+        cursor = search.pageInfo ? search.pageInfo.endCursor : null;
+        page += 1;
+    }
+
+    pruneCache();
+    prCache.set(username, { timestamp: Date.now(), prs });
+    return prs;
+}
+
+/** Map a GraphQL PullRequest node onto the flat record used by the renderer. */
+function normalizePullRequest(node) {
+    return {
+        id: node.id,
+        title: node.title || '',
+        url: node.url || '',
+        createdAt: node.createdAt,
+        state: String(node.state || '').toLowerCase(),
+        mergedAt: node.mergedAt || null,
+        repositoryUrl: node.repository.url || '',
+        repoStars: Number.isFinite(node.repository.stargazerCount) ? node.repository.stargazerCount : 0,
+        repoLanguage: node.repository.primaryLanguage ? node.repository.primaryLanguage.name : null,
+        additions: Number.isFinite(node.additions) ? node.additions : 0,
+        deletions: Number.isFinite(node.deletions) ? node.deletions : 0
+    };
+}
+
+/**
+ * Filter, deduplicate and rank pull requests according to the badge options.
+ *
+ * @param {Array<object>} prs Normalized pull request records.
+ * @param {object} opts Parsed request options.
+ * @returns {Array<object>} The rows to render, already sorted and capped.
+ */
+function selectPullRequests(prs, opts) {
+    let selected = prs.filter((pr) => {
+        const isMerged = Boolean(pr.mergedAt);
+        if (isMerged || pr.state === 'open') return true;
+        return opts.showRejected && pr.state === 'closed';
+    });
+
+    if (opts.uniqueRepos) {
+        const latestPerRepo = new Map();
+        for (const pr of selected) {
+            const existing = latestPerRepo.get(pr.repositoryUrl);
+            if (!existing || Date.parse(pr.createdAt) > Date.parse(existing.createdAt)) {
+                latestPerRepo.set(pr.repositoryUrl, pr);
+            }
+        }
+        selected = [...latestPerRepo.values()];
+    }
+
+    selected.sort((a, b) => b.repoStars - a.repoStars);
+    return selected.slice(0, opts.limit);
+}
+
+// ---------------------------------------------------------------------------
+// 4. SVG rendering
+// ---------------------------------------------------------------------------
+
+function escapeXml(value) {
+    return String(value)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -266,69 +457,88 @@ function escapeXml(str) {
         .replace(/'/g, '&#39;');
 }
 
+/**
+ * Truncate a raw string to `length` characters (code-point safe) and escape
+ * the result. Truncation happens before escaping so XML entities are never
+ * cut in half.
+ */
 function truncate(str, length) {
-    const safe = escapeXml(str);
-    return safe.length > length ? safe.substring(0, length - 3) + '...' : safe;
+    const chars = [...String(str)];
+    const truncated = chars.length > length ? `${chars.slice(0, Math.max(0, length - 3)).join('')}...` : chars.join('');
+    return escapeXml(truncated);
 }
 
-function truncateToWidth(str, widthPx, pxPerChar = 7.2, minLen = 4) {
-    const maxLen = Math.max(minLen, Math.floor(Math.max(0, widthPx) / pxPerChar));
-    return truncate(str, maxLen);
+/** Estimate how many characters fit into `widthPx` and truncate accordingly. */
+function truncateToWidth(str, widthPx, pxPerChar = 7.2, minLength = 4) {
+    const maxLength = Math.max(minLength, Math.floor(Math.max(0, widthPx) / pxPerChar));
+    return truncate(str, maxLength);
 }
 
+/** Format a star count with a compact `k` suffix for large values. */
 function formatStars(stars) {
-    return stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : String(stars);
+    return stars >= 1000 ? `${(stars / 1000).toFixed(1)}k` : String(stars);
 }
 
+/** Format an ISO timestamp as `YYYY-MM-DD`, tolerating invalid dates. */
+function formatDate(isoTimestamp) {
+    const date = new Date(isoTimestamp);
+    return Number.isNaN(date.getTime()) ? '—' : date.toISOString().slice(0, 10);
+}
+
+/** Resolve the status icon (merged / open / closed) for a pull request. */
 function getStatusIcon(pr) {
-    if (pr.pull_request && pr.pull_request.merged_at) {
-        return {
-            color: '#a371f7',
-            path: 'M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z'
-        };
-    }
-    if (pr.state === 'open') {
-        return {
-            color: '#3fb950',
-            path: 'M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.25 2.25 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854v4.792a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm.75-2.25a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5Z'
-        };
-    }
-    return {
-        color: '#f85149',
-        path: 'M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.25 2.25 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854v4.792a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z'
-    };
+    if (pr.mergedAt) return ICONS.merged;
+    if (pr.state === 'open') return ICONS.open;
+    return ICONS.closed;
 }
 
-function distributePreferredWidths(optionalColumns, remainingWidth, minWidth) {
-    if (!optionalColumns.length) return [];
-    if (remainingWidth <= 0) return optionalColumns.map(() => 0);
+/** Derive the display name of a repository from its API URL. */
+function formatRepoName(repositoryUrl, format) {
+    const parts = String(repositoryUrl).split('/').filter(Boolean).slice(-2);
+    if (format === 'short') return parts[parts.length - 1] || '';
+    return parts.join('/');
+}
 
-    const sumPreferred = optionalColumns.reduce((sum, col) => sum + col.preferredWidth, 0);
+/**
+ * Distribute `remainingWidth` across optional columns proportionally to their
+ * preferred widths, guaranteeing `minWidth` per column whenever possible and
+ * consuming every pixel exactly (no rounding drift).
+ */
+function distributePreferredWidths(columns, remainingWidth, minWidth) {
+    if (!columns.length) return [];
+    if (remainingWidth <= 0) return columns.map(() => 0);
 
+    const sumPreferred = columns.reduce((sum, col) => sum + col.preferredWidth, 0);
+
+    // Everything fits: hand out preferred widths and give the slack to the
+    // widest column so the row still spans the full badge.
     if (sumPreferred <= remainingWidth) {
-        const widths = optionalColumns.map((col) => col.preferredWidth);
-        const leftover = remainingWidth - sumPreferred;
-        if (leftover > 0) {
-            let largestIdx = 0;
-            for (let i = 1; i < optionalColumns.length; i += 1) {
-                if (optionalColumns[i].preferredWidth > optionalColumns[largestIdx].preferredWidth) {
-                    largestIdx = i;
-                }
+        const widths = columns.map((col) => col.preferredWidth);
+        let largestIdx = 0;
+        for (let i = 1; i < columns.length; i += 1) {
+            if (columns[i].preferredWidth > columns[largestIdx].preferredWidth) {
+                largestIdx = i;
             }
-            widths[largestIdx] += leftover;
         }
+        widths[largestIdx] += remainingWidth - sumPreferred;
         return widths;
     }
 
-    const floorMinTotal = minWidth * optionalColumns.length;
+    // Not even the minimums fit: split whatever space is left evenly.
+    const floorMinTotal = minWidth * columns.length;
     if (remainingWidth <= floorMinTotal) {
-        const even = Math.floor(remainingWidth / optionalColumns.length);
-        const widths = optionalColumns.map(() => even);
-        widths[widths.length - 1] += remainingWidth - even * optionalColumns.length;
+        const even = Math.floor(remainingWidth / columns.length);
+        const widths = columns.map(() => even);
+        widths[widths.length - 1] += remainingWidth - even * columns.length;
         return widths;
     }
 
-    const widths = optionalColumns.map((col) => Math.max(minWidth, Math.floor((col.preferredWidth * remainingWidth) / sumPreferred)));
+    // Proportional distribution with a hard per-column minimum, then repair
+    // rounding overshoot from the right and give any remainder to the last
+    // column so the total matches `remainingWidth` exactly.
+    const widths = columns.map((col) =>
+        Math.max(minWidth, Math.floor((col.preferredWidth * remainingWidth) / sumPreferred))
+    );
     let used = widths.reduce((sum, value) => sum + value, 0);
 
     while (used > remainingWidth) {
@@ -342,213 +552,272 @@ function distributePreferredWidths(optionalColumns, remainingWidth, minWidth) {
         }
         if (!changed) break;
     }
-
     if (used < remainingWidth) {
-        widths[widths.length - 1] += (remainingWidth - used);
+        widths[widths.length - 1] += remainingWidth - used;
     }
-
     return widths;
 }
 
-function buildSvg(prs, username, opts) {
-    const {
-        showPr,
-        showDate,
-        showRepo,
-        showLang,
-        showChanges,
-        showStars,
-        repoNameFormat,
-        colOrder,
-        badgeWidth,
-        rowHeight,
-        repoWidth,
-        langWidth,
-        prWidth,
-        dateWidth,
-        changesWidth,
-        starsWidth,
-        bgColor,
-        textColor,
-        titleColor,
-        mutedColor,
-        starColor,
-        borderColor,
-        shadowColor,
-        transparent,
-        customTitle
-    } = opts;
+/**
+ * Compute the horizontal position and final width of every visible column.
+ * The repository column absorbs shrinking first; optional columns then share
+ * whatever width remains between the repo and stars columns.
+ */
+function computeColumnLayout(opts) {
+    const { badgeWidth, repoWidth, starsWidth, colOrder } = opts;
+    const { leftPad, rightPad, iconWidth, iconGap, colGap, repoMinWidth, columnMinWidth } = LAYOUT;
 
-    const font = 'Segoe UI, Helvetica, Arial, sans-serif';
-    const safeUser = escapeXml(username);
-    const headerText = customTitle ? escapeXml(customTitle) : `Top Contributions by ${safeUser}`;
-    const leftPad = 20;
-    const rightPad = 20;
-    const iconWidth = 24;
-    const iconGap = 8;
-    const colGap = 12;
-    const textShadowStyle = transparent ? `filter="url(#textShadow)"` : '';
-
-    const optionalColumnDefs = {
-        pr: { key: 'pr', label: 'PULL REQUEST', preferredWidth: prWidth, enabled: showPr },
-        date: { key: 'date', label: 'DATE', preferredWidth: dateWidth, enabled: showDate },
-        lang: { key: 'lang', label: 'LANGUAGE', preferredWidth: langWidth, enabled: showLang },
-        changes: { key: 'changes', label: 'CHANGES', preferredWidth: changesWidth, enabled: showChanges }
+    const columnDefs = {
+        pr: { key: 'pr', label: 'PULL REQUEST', preferredWidth: opts.prWidth, enabled: opts.showPr },
+        date: { key: 'date', label: 'DATE', preferredWidth: opts.dateWidth, enabled: opts.showDate },
+        lang: { key: 'lang', label: 'LANGUAGE', preferredWidth: opts.langWidth, enabled: opts.showLang },
+        changes: { key: 'changes', label: 'CHANGES', preferredWidth: opts.changesWidth, enabled: opts.showChanges }
     };
-
-    const enabledOptionalColumns = colOrder
-        .map((key) => optionalColumnDefs[key])
-        .filter((col) => col && col.enabled);
+    const optionalColumns = colOrder.map((key) => columnDefs[key]).filter((col) => col && col.enabled);
 
     const xIcon = leftPad;
     const xRepo = xIcon + iconWidth + iconGap;
     const xStars = badgeWidth - rightPad - starsWidth;
 
-    let repoActualWidth = showRepo ? repoWidth : 0;
-    const optionalCount = enabledOptionalColumns.length;
+    let repoActualWidth = repoWidth;
 
-    if (optionalCount === 0) {
-        repoActualWidth = Math.max(0, badgeWidth - leftPad - iconWidth - iconGap - starsWidth - rightPad - colGap);
+    if (optionalColumns.length === 0) {
+        // Repo is the only flexible column: let it span the full middle area.
+        repoActualWidth = Math.max(0, xStars - xRepo - colGap);
     } else {
-        const totalGaps = (optionalCount + 1) * colGap;
+        const totalGaps = (optionalColumns.length + 1) * colGap;
         const fixedWidth = leftPad + iconWidth + iconGap + repoActualWidth + starsWidth + rightPad + totalGaps;
         let remainingWidth = badgeWidth - fixedWidth;
 
         if (remainingWidth < 0) {
-            const repoMin = 60;
-            const shrink = Math.min(repoActualWidth - repoMin, Math.abs(remainingWidth));
+            // Shrink the repo column (never below its minimum) to make room.
+            const shrink = Math.min(repoActualWidth - repoMinWidth, -remainingWidth);
             repoActualWidth -= Math.max(0, shrink);
-            remainingWidth = badgeWidth - (leftPad + iconWidth + iconGap + repoActualWidth + starsWidth + rightPad + totalGaps);
+            remainingWidth =
+                badgeWidth - (leftPad + iconWidth + iconGap + repoActualWidth + starsWidth + rightPad + totalGaps);
         }
 
-        const optionalWidths = distributePreferredWidths(enabledOptionalColumns, Math.max(0, remainingWidth), 50);
-        enabledOptionalColumns.forEach((col, idx) => {
-            col.actualWidth = optionalWidths[idx];
+        const optionalWidths = distributePreferredWidths(
+            optionalColumns,
+            Math.max(0, remainingWidth),
+            columnMinWidth
+        );
+        optionalColumns.forEach((col, index) => {
+            col.actualWidth = optionalWidths[index];
         });
     }
 
-    if (optionalCount === 0) {
-        const maxRepoFit = Math.max(0, xStars - xRepo - colGap);
-        repoActualWidth = Math.min(repoActualWidth, maxRepoFit);
-    }
-
-    const columnMap = {
+    const columns = {
         repo: { key: 'repo', label: 'REPOSITORY', x: xRepo, actualWidth: repoActualWidth },
         stars: { key: 'stars', label: 'STARS', x: xStars, actualWidth: starsWidth }
     };
 
     let xCurrent = xRepo + repoActualWidth + colGap;
-    for (const col of enabledOptionalColumns) {
-        columnMap[col.key] = {
-            key: col.key,
-            label: col.label,
-            x: xCurrent,
-            actualWidth: col.actualWidth
-        };
+    for (const col of optionalColumns) {
+        columns[col.key] = { key: col.key, label: col.label, x: xCurrent, actualWidth: col.actualWidth };
         xCurrent += col.actualWidth + colGap;
     }
 
-    const headerColumns = [columnMap.repo, ...enabledOptionalColumns.map((col) => columnMap[col.key]), columnMap.stars];
-    const headerHtml = headerColumns
+    return { columns, optionalColumns, xIcon };
+}
+
+/** Render the uppercase header row (column captions plus divider line). */
+function renderHeader(layout, opts) {
+    const { columns, optionalColumns } = layout;
+    const shadowAttr = opts.transparent ? ' filter="url(#textShadow)"' : '';
+
+    const headerColumns = [
+        columns.repo,
+        ...optionalColumns.map((col) => columns[col.key]),
+        columns.stars
+    ];
+    const labels = headerColumns
         .filter((col) => col && col.actualWidth > 0)
-        .map((col) => `<text x="${col.x}" y="75" font-family="${font}" font-size="12" font-weight="bold" fill="#${mutedColor}" ${textShadowStyle}>${col.label}</text>`)
+        .map(
+            (col) =>
+                `<text x="${col.x}" y="${LAYOUT.headerY}" font-family="${FONT_STACK}" font-size="12" font-weight="bold" fill="#${opts.colors.muted}"${shadowAttr}>${col.label}</text>`
+        )
         .join('');
 
-    let rowsHtml = '';
-    prs.forEach((pr, index) => {
-        const yOffset = 110 + index * rowHeight;
-        const icon = getStatusIcon(pr);
-        const repoParts = pr.repository_url.split('/').slice(-2);
-        const repoName = repoNameFormat === 'short' ? (repoParts[1] || repoParts[0] || '') : repoParts.join('/');
-        const date = new Date(pr.created_at).toISOString().split('T')[0];
-        const starsText = formatStars(pr.repoStars);
-        const langText = pr.repoLanguage || 'Unknown';
-
-        rowsHtml += `<g transform="translate(0, ${yOffset})">`;
-        rowsHtml += `<svg x="${xIcon}" y="-12" width="16" height="16" viewBox="0 0 16 16" fill="${icon.color}"><path fill-rule="evenodd" d="${icon.path}"></path></svg>`;
-
-        const repoCol = columnMap.repo;
-        if (repoCol && repoCol.actualWidth > 0) {
-            const repoText = truncateToWidth(repoName, repoCol.actualWidth - 6, 7.2, 6);
-            rowsHtml += `<text x="${repoCol.x}" y="0" font-family="${font}" font-size="14" font-weight="600" fill="#${textColor}" ${textShadowStyle}>${repoText}</text>`;
-        }
-
-        const prCol = columnMap.pr;
-        if (prCol && prCol.actualWidth > 0) {
-            const prTitle = truncateToWidth(pr.title, prCol.actualWidth - 6, 7.2, 8);
-            rowsHtml += `<text x="${prCol.x}" y="0" font-family="${font}" font-size="14" fill="#${mutedColor}" ${textShadowStyle}>${prTitle}</text>`;
-        }
-
-        const dateCol = columnMap.date;
-        if (dateCol && dateCol.actualWidth > 0) {
-            const dateText = truncateToWidth(date, dateCol.actualWidth - 6, 7, 8);
-            rowsHtml += `<text x="${dateCol.x}" y="0" font-family="${font}" font-size="13" fill="#${mutedColor}" ${textShadowStyle}>${dateText}</text>`;
-        }
-
-        const langCol = columnMap.lang;
-        if (langCol && langCol.actualWidth > 0) {
-            const langColor = LANG_COLORS[pr.repoLanguage] || '#8b949e';
-            const langTextX = langCol.x + 14;
-            const langMaxTextWidth = Math.max(12, langCol.actualWidth - 16);
-            const langDisplay = truncateToWidth(langText, langMaxTextWidth, 7, 4);
-            rowsHtml += `<circle cx="${langCol.x + 5}" cy="-4" r="5" fill="${langColor}"/>`;
-            rowsHtml += `<text x="${langTextX}" y="0" font-family="${font}" font-size="13" fill="#${textColor}" ${textShadowStyle}>${langDisplay}</text>`;
-        }
-
-        const changesCol = columnMap.changes;
-        if (changesCol && changesCol.actualWidth > 0) {
-            const additions = pr.additions || 0;
-            const deletions = pr.deletions || 0;
-            const addText = `+${additions}`;
-            const delText = `-${deletions}`;
-            const fullText = `${addText} / ${delText}`;
-            const pxPerChar = 7.2;
-            const useCompact = (fullText.length * pxPerChar) > Math.max(0, changesCol.actualWidth - 2);
-            const sepText = useCompact ? '/' : ' / ';
-            rowsHtml += `<text x="${changesCol.x}" y="0" font-family="${font}" font-size="13" ${textShadowStyle}><tspan fill="#3fb950">${escapeXml(addText)}</tspan><tspan fill="#${mutedColor}">${escapeXml(sepText)}</tspan><tspan fill="#f85149">${escapeXml(delText)}</tspan></text>`;
-        }
-
-        const starsCol = columnMap.stars;
-        if (showStars && starsCol && starsCol.actualWidth > 0) {
-            const starTextX = starsCol.x + 20;
-            const starTextWidth = Math.max(10, starsCol.actualWidth - 20);
-            const starValue = truncateToWidth(starsText, starTextWidth, 7, 2);
-            rowsHtml += `<svg x="${starsCol.x}" y="-12" width="16" height="16" viewBox="0 0 16 16" fill="#${starColor}"><path fill-rule="evenodd" d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"></path></svg>`;
-            rowsHtml += `<text x="${starTextX}" y="0" font-family="${font}" font-size="13" font-weight="bold" fill="#${starColor}" ${textShadowStyle}>${starValue}</text>`;
-        }
-
-        rowsHtml += `</g>`;
-    });
-
-    const svgHeight = 95 + prs.length * rowHeight;
-
-    const backgroundRect = transparent
+    const line = opts.transparent
         ? ''
-        : `<rect width="${badgeWidth - 2}" height="${svgHeight - 2}" x="1" y="1" rx="8" fill="#${bgColor}" stroke="#${borderColor}" stroke-width="1"/>`;
-    const headerLine = transparent
-        ? ''
-        : `<line x1="20" y1="85" x2="${badgeWidth - 20}" y2="85" stroke="#${borderColor}" stroke-width="1"/>`;
-    const shadowDefs = transparent
-        ? `<defs><filter id="textShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="#${shadowColor}" flood-opacity="1"/></filter></defs>`
+        : `<line x1="${LAYOUT.leftPad}" y1="${LAYOUT.headerLineY}" x2="${opts.badgeWidth - LAYOUT.rightPad}" y2="${LAYOUT.headerLineY}" stroke="#${opts.colors.border}" stroke-width="1"/>`;
+
+    return labels + line;
+}
+
+/** Render a single pull request row (status icon plus enabled columns). */
+function renderRow(pr, index, layout, opts) {
+    const { columns, xIcon } = layout;
+    const textColor = `#${opts.colors.text}`;
+    const mutedColor = `#${opts.colors.muted}`;
+    const shadowAttr = opts.transparent ? ' filter="url(#textShadow)"' : '';
+    const yOffset = LAYOUT.firstRowY + index * opts.rowHeight;
+    const icon = getStatusIcon(pr);
+
+    const parts = [`<g transform="translate(0, ${yOffset})">`];
+    parts.push(
+        `<svg x="${xIcon}" y="-12" width="16" height="16" viewBox="0 0 16 16" fill="${icon.color}"><path fill-rule="evenodd" d="${icon.path}"></path></svg>`
+    );
+
+    if (columns.repo.actualWidth > 0) {
+        const repoName = formatRepoName(pr.repositoryUrl, opts.repoNameFormat);
+        const repoText = truncateToWidth(repoName, columns.repo.actualWidth - 6, 7.2, 6);
+        parts.push(
+            `<text x="${columns.repo.x}" y="0" font-family="${FONT_STACK}" font-size="14" font-weight="600" fill="${textColor}"${shadowAttr}>${repoText}</text>`
+        );
+    }
+
+    if (columns.pr && columns.pr.actualWidth > 0) {
+        const titleText = truncateToWidth(pr.title, columns.pr.actualWidth - 6, 7.2, 8);
+        parts.push(
+            `<text x="${columns.pr.x}" y="0" font-family="${FONT_STACK}" font-size="14" fill="${mutedColor}"${shadowAttr}>${titleText}</text>`
+        );
+    }
+
+    if (columns.date && columns.date.actualWidth > 0) {
+        const dateText = truncateToWidth(formatDate(pr.createdAt), columns.date.actualWidth - 6, 7, 8);
+        parts.push(
+            `<text x="${columns.date.x}" y="0" font-family="${FONT_STACK}" font-size="13" fill="${mutedColor}"${shadowAttr}>${dateText}</text>`
+        );
+    }
+
+    if (columns.lang && columns.lang.actualWidth > 0) {
+        const language = pr.repoLanguage || 'Unknown';
+        const languageColor = LANG_COLORS[pr.repoLanguage] || DEFAULT_LANGUAGE_COLOR;
+        const languageText = truncateToWidth(language, Math.max(12, columns.lang.actualWidth - 16), 7, 4);
+        parts.push(`<circle cx="${columns.lang.x + 5}" cy="-4" r="5" fill="${languageColor}"/>`);
+        parts.push(
+            `<text x="${columns.lang.x + 14}" y="0" font-family="${FONT_STACK}" font-size="13" fill="${textColor}"${shadowAttr}>${languageText}</text>`
+        );
+    }
+
+    if (columns.changes && columns.changes.actualWidth > 0) {
+        const additions = `+${pr.additions}`;
+        const deletions = `-${pr.deletions}`;
+        // Fall back to a compact separator when the column is narrow.
+        const compact = (additions.length + deletions.length + 3) * 7.2 > Math.max(0, columns.changes.actualWidth - 2);
+        const separator = compact ? '/' : ' / ';
+        parts.push(
+            `<text x="${columns.changes.x}" y="0" font-family="${FONT_STACK}" font-size="13"${shadowAttr}>` +
+                `<tspan fill="#3fb950">${escapeXml(additions)}</tspan>` +
+                `<tspan fill="${mutedColor}">${escapeXml(separator)}</tspan>` +
+                `<tspan fill="#f85149">${escapeXml(deletions)}</tspan></text>`
+        );
+    }
+
+    if (columns.stars.actualWidth > 0) {
+        const starsText = truncateToWidth(formatStars(pr.repoStars), Math.max(10, columns.stars.actualWidth - 20), 7, 2);
+        parts.push(
+            `<svg x="${columns.stars.x}" y="-12" width="16" height="16" viewBox="0 0 16 16" fill="#${opts.colors.star}"><path fill-rule="evenodd" d="${ICONS.star.path}"></path></svg>`
+        );
+        parts.push(
+            `<text x="${columns.stars.x + 20}" y="0" font-family="${FONT_STACK}" font-size="13" font-weight="bold" fill="#${opts.colors.star}"${shadowAttr}>${starsText}</text>`
+        );
+    }
+
+    parts.push('</g>');
+    return parts.join('');
+}
+
+/**
+ * Assemble the complete badge SVG document.
+ *
+ * @param {Array<object>} prs Rows to render (already filtered and sorted).
+ * @param {object} opts Parsed and validated request options.
+ * @returns {string} SVG markup.
+ */
+function buildSvg(prs, opts) {
+    const layout = computeColumnLayout(opts);
+    const svgHeight = LAYOUT.headerLineY + 10 + prs.length * opts.rowHeight;
+    const shadowAttr = opts.transparent ? ' filter="url(#textShadow)"' : '';
+
+    const headerText = opts.customTitle
+        ? escapeXml(opts.customTitle)
+        : `Top Contributions by ${escapeXml(opts.username)}`;
+
+    const defs = opts.transparent
+        ? `<defs><filter id="textShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="#${opts.colors.shadow}" flood-opacity="1"/></filter></defs>`
         : '';
+    const background = opts.transparent
+        ? ''
+        : `<rect width="${opts.badgeWidth - 2}" height="${svgHeight - 2}" x="1" y="1" rx="8" fill="#${opts.colors.bg}" stroke="#${opts.colors.border}" stroke-width="1"/>`;
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${badgeWidth}" height="${svgHeight}" viewBox="0 0 ${badgeWidth} ${svgHeight}">
-  ${shadowDefs}
-  ${backgroundRect}
-  <text x="20" y="35" font-family="${font}" font-size="18" font-weight="bold" fill="#${titleColor}" ${textShadowStyle}>${headerText}</text>
-  ${headerHtml}
-  ${headerLine}
-  ${rowsHtml}
+    const rows = prs.map((pr, index) => renderRow(pr, index, layout, opts)).join('');
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${opts.badgeWidth}" height="${svgHeight}" viewBox="0 0 ${opts.badgeWidth} ${svgHeight}">
+  ${defs}
+  ${background}
+  <text x="${LAYOUT.leftPad}" y="${LAYOUT.titleY}" font-family="${FONT_STACK}" font-size="18" font-weight="bold" fill="#${opts.colors.title}"${shadowAttr}>${headerText}</text>
+  ${renderHeader(layout, opts)}
+  ${rows}
 </svg>`;
 }
 
-function sendErrorSvg(res, message, bgColor, borderColor) {
-    const font = 'Segoe UI, Helvetica, Arial, sans-serif';
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="60" viewBox="0 0 500 60">
-  <rect width="498" height="58" x="1" y="1" rx="8" fill="#${bgColor}" stroke="#${borderColor}" stroke-width="1"/>
-  <text x="20" y="35" font-family="${font}" font-size="14" fill="#f85149">${escapeXml(message)}</text>
+/**
+ * Render a small placeholder badge conveying an error message. Errors are
+ * still served as `image/svg+xml` with HTTP 200 so README embeds degrade
+ * gracefully instead of showing a broken image.
+ */
+function buildErrorSvg(message, opts) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="60" viewBox="0 0 500 60">
+  <rect width="498" height="58" x="1" y="1" rx="8" fill="#${opts.colors.bg}" stroke="#${opts.colors.border}" stroke-width="1"/>
+  <text x="20" y="35" font-family="${FONT_STACK}" font-size="14" fill="#f85149">${escapeXml(message)}</text>
 </svg>`;
-    res.setHeader('Content-Type', 'image/svg+xml');
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
+}
+
+// ---------------------------------------------------------------------------
+// 5. HTTP helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply headers common to every SVG response. The strict CSP keeps the badge
+ * inert if it is opened directly in a browser.
+ */
+function applySvgHeaders(res, cacheControl) {
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', cacheControl);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', 'default-src \'none\'; style-src \'unsafe-inline\'; sandbox');
+}
+
+function sendSvg(res, svg, cacheControl) {
+    applySvgHeaders(res, cacheControl);
     res.status(200).send(svg);
+}
+
+function sendErrorSvg(res, message, opts) {
+    sendSvg(res, buildErrorSvg(message, opts), CACHE_CONTROL_ERROR);
+}
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
+
+export default async function handler(req, res) {
+    const opts = parseOptions(req.query || {});
+
+    try {
+        const allPrs = await fetchUserPullRequests(opts.username);
+        if (allPrs.length === 0) {
+            sendErrorSvg(res, `No Pull Requests found for "${opts.username}".`, opts);
+            return;
+        }
+
+        const rows = selectPullRequests(allPrs, opts);
+        if (rows.length === 0) {
+            sendErrorSvg(res, 'No Pull Requests match the selected filters.', opts);
+            return;
+        }
+
+        sendSvg(res, buildSvg(rows, opts), CACHE_CONTROL_OK);
+    } catch (error) {
+        if (error instanceof BadgeUpstreamError) {
+            sendErrorSvg(res, error.message, opts);
+            return;
+        }
+        // Unexpected failure: log for observability, answer with a generic badge.
+        console.error('Badge generation failed:', error);
+        sendErrorSvg(res, 'Error generating badge. Please try again.', opts);
+    }
 }

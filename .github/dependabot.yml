@@ -1,4 +1,5 @@
 version: 2
+
 updates:
   - package-ecosystem: "pip"
     directory: "/"
@@ -6,7 +7,17 @@ updates:
       interval: "monthly"
     labels:
       - "dependencies"
-      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -14,4 +25,5 @@ updates:
       interval: "monthly"
     labels:
       - "dependencies"
-      - "actions"
+    commit-message:
+      prefix: "chore(ci)"

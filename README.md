@@ -7,7 +7,7 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
 
 [![Build](https://img.shields.io/badge/Build-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 [![Version](https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge)](./package.json)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](./LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green?style=for-the-badge)](./LICENSE)
 [![API](https://img.shields.io/badge/API-GitHub%20GraphQL-181717?style=for-the-badge&logo=github)](https://docs.github.com/en/graphql)
 
 ---
@@ -25,6 +25,7 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
 - [Getting Started](#getting-started)
 - [Testing](#testing)
 - [Deployment](#deployment)
+- [Repository Automation](#repository-automation)
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [License](#license)
@@ -69,6 +70,9 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
 
 ```text
 .
+|-- .github/
+|   |-- workflows/             # CI: lint, CodeQL SAST, Scorecard, Dependabot, AI issue analysis
+|   `-- labels.yml             # Declarative label catalog (source of truth for sync)
 |-- api/
 |   `-- badge.js               # Serverless badge generation handler
 |-- i18n/
@@ -77,9 +81,14 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
 |   |-- ru.js                  # Russian UI strings
 |   |-- zh-CN.js               # Simplified Chinese UI strings
 |   |-- ...                    # Other locale bundles
-|   `-- validate.js            # i18n required-key validator
+|   `-- validate.js            # i18n required-key schema and validator
+|-- scripts/
+|   |-- sync_labels.py         # Applies .github/labels.yml to the repository
+|   |-- trigger_action.py      # AI change-analysis automation (GitHub Actions)
+|   `-- validate-i18n.mjs      # Node.js i18n integrity check used by CI
 |-- index.html                 # Badge generator UI + markdown output helper
 |-- package.json               # Package metadata and scripts
+|-- requirements.txt           # Pinned Python dependencies (Dependabot-managed)
 |-- LICENSE
 `-- README.md
 ```
@@ -149,10 +158,16 @@ Then export your token (if no `.env` loader is configured):
 export GITHUB_TOKEN="ghp_your_token_here"
 ```
 
-Run locally:
+The badge handler is a serverless function; to run the full stack locally use the Vercel CLI:
 
 ```bash
-npm start
+npx vercel dev
+```
+
+Static checks (no deployment required):
+
+```bash
+npm run lint
 ```
 
 > [!WARNING]
@@ -160,20 +175,22 @@ npm start
 
 ## Testing
 
-This repository is lightweight and currently does not define a full dedicated test framework in `package.json`. Use the following practical checks:
+The repository ships fast, dependency-free static checks that also run in CI (`.github/workflows/lint.yml`):
 
 ### Lint/Static Checks
 
 ```bash
-node --check api/badge.js
-node --check i18n/validate.js
+npm run lint          # JS syntax check + i18n schema validation
 ```
 
 ### i18n Integrity
 
 ```bash
-node -e "global.window={};require('fs').readdirSync('./i18n').filter(f=>f.endsWith('.js')).forEach(f=>{eval(require('fs').readFileSync('./i18n/'+f,'utf8'))});window.validateI18nIntegrity();console.log('i18n OK')"
+npm run validate:i18n # every locale must match the schema in i18n/validate.js
 ```
+
+The validator loads all locale bundles, enforces the required-key schema and
+cross-checks every `data-i18n` key referenced from `index.html`.
 
 ### API Smoke Test (after deployment or local serverless emulation)
 
@@ -197,13 +214,46 @@ curl "http://localhost:3000/api/badge?username=OstinUA&limit=5&show_pr=true&show
 
 ### CI/CD Integration Guidelines
 
-- Add a CI job that runs syntax checks (`node --check ...`).
+- Pull requests run syntax checks, i18n schema validation, and CodeQL SAST automatically.
 - Add a smoke request against `/api/badge` on preview deployments.
 - Fail deployment if SVG response contains known error markers.
 
 ### Containerization (Optional)
 
 For teams that prefer containerized preview environments, serve static files and route function execution through your platform’s Node serverless adapter. Keep the API contract unchanged to preserve badge URLs.
+
+## Repository Automation
+
+Two workflows drive repository hygiene. Both are idempotent and safe to re-run.
+
+### AI Change Analysis
+
+`.github/workflows/ai-issue.yml` runs `scripts/trigger_action.py` on pushes and
+pull requests. The script collects the diff, classifies the change, asks a
+configurable model for a severity verdict and files a labeled issue. Runs are
+skipped (exit code `0`) when the actor is not allow-listed, the diff is too
+small, an issue already exists for the change, or the model is unavailable.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `GITHUB_TOKEN` | yes | Repository access for diff collection and issue creation |
+| `GH_MODELS_TOKEN` | yes | Inference backend authentication |
+| `REPOSITORY` | yes | `owner/repo` target |
+| `EVENT_NAME` | yes | `push` or `pull_request` |
+| `ALLOWED_USER` | no | Comma-separated allow-list of triggering logins |
+| `AI_ENDPOINT` | no | Override the inference endpoint |
+| `AI_MODEL` | no | Override the model name |
+
+### Label Synchronization
+
+`.github/workflows/label-sync.yml` runs `scripts/sync_labels.py` whenever
+`.github/labels.yml` changes, treating that file as the single source of truth.
+Labels are created or updated to match; labels absent from the catalog are left
+alone unless `PRUNE_LABELS=true` is set.
+
+```bash
+GITHUB_TOKEN=ghp_xxx GITHUB_REPOSITORY=owner/repo python scripts/sync_labels.py
+```
 
 ## Usage
 
@@ -297,7 +347,7 @@ Below is the runtime query parameter reference for `/api/badge`.
 
 ## License
 
-This project is licensed under the **MIT License**. See [`LICENSE`](./LICENSE) for full terms.
+This project is licensed under the **GNU General Public License v3.0**. See [`LICENSE`](./LICENSE) for full terms.
 
 ## Support the Project
 
