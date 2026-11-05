@@ -2,4 +2,4 @@
 # Pinned exact versions; updated by Dependabot (pip ecosystem).
 PyGithub==2.5.0
 PyYAML==6.0.2
-requests==2.32.3
+requests==2.34.2
