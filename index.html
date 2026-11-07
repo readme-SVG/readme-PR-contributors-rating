@@ -491,6 +491,33 @@
             line-height: 1.5;
         }
 
+
+        .action-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .action-row .btn-primary { flex: 1 1 auto; }
+
+        .snippet-format {
+            min-width: 118px;
+            padding: 5px 8px;
+            font-size: 12px;
+        }
+
+        .code-block {
+            max-height: 180px;
+            overflow: auto;
+            overflow-wrap: anywhere;
+        }
+
+        .preview-area img {
+            max-width: 100%;
+            display: block;
+            border-radius: 8px;
+        }
+
         .footer {
             border-top: 1px solid var(--gh-border);
             background: var(--gh-canvas);
@@ -554,7 +581,7 @@
         <div class="panel-body">
             <div class="config-sections">
                 <details class="config-section" open>
-                    <summary>General</summary>
+                    <summary data-i18n="sectionGeneral">General</summary>
                     <div class="section-body">
                         <div class="form-group">
                             <label class="form-label" for="username" data-i18n="usernameLabel">GitHub Username</label>
@@ -579,9 +606,38 @@
                             </div>
                         </div>
 
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="sort" data-i18n="sortLabel">Ranking metric</label>
+                                <select class="form-input" id="sort">
+                                    <option value="stars" data-i18n="sortStars">Repository stars</option>
+                                    <option value="date" data-i18n="sortDate">Creation date</option>
+                                    <option value="changes" data-i18n="sortChanges">Lines changed</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="order" data-i18n="orderLabel">Direction</label>
+                                <select class="form-input" id="order">
+                                    <option value="desc" data-i18n="orderDesc">Descending</option>
+                                    <option value="asc" data-i18n="orderAsc">Ascending</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="form-group">
                             <label class="form-label" for="customTitle" data-i18n="customTitleLabel">Custom title</label>
                             <input class="form-input" type="text" id="customTitle" placeholder="Leave empty for default" maxlength="80">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="since" data-i18n="sinceLabel">Created after</label>
+                                <input class="form-input" type="date" id="since">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="until" data-i18n="untilLabel">Created before</label>
+                                <input class="form-input" type="date" id="until">
+                            </div>
                         </div>
 
                         <div class="checkbox-stack">
@@ -592,6 +648,10 @@
                             <div class="checkbox-row">
                                 <input type="checkbox" id="showRejected">
                                 <label for="showRejected" data-i18n="showRejectedLabel">Show rejected PRs</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="showRank">
+                                <label for="showRank" data-i18n="showRankLabel">Show rank numbers</label>
                             </div>
                         </div>
 
@@ -606,7 +666,7 @@
                 </details>
 
                 <details class="config-section">
-                    <summary>Columns</summary>
+                    <summary data-i18n="sectionColumns">Columns</summary>
                     <div class="section-body">
                         <div class="form-group">
                             <label class="form-label" data-i18n="columnOrderLabel">Column Order</label>
@@ -616,7 +676,7 @@
                 </details>
 
                 <details class="config-section">
-                    <summary>Dimensions</summary>
+                    <summary data-i18n="sectionDimensions">Dimensions</summary>
                     <div class="section-body">
                         <div class="form-row">
                             <div class="form-group">
@@ -670,7 +730,7 @@
                 </details>
 
                 <details class="config-section">
-                    <summary>Colors</summary>
+                    <summary data-i18n="sectionColors">Colors</summary>
                     <div class="section-body">
                         <div class="form-row">
                             <div class="form-group">
@@ -734,9 +794,12 @@
                 </details>
             </div>
 
-            <div class="form-group">
+            <div class="form-group action-row">
                 <button class="btn-primary" id="generateBtn" type="button">
                     <span data-i18n="generateBtn">Generate Badge</span>
+                </button>
+                <button class="btn-copy" id="resetBtn" type="button">
+                    <span data-i18n="resetBtn">Reset</span>
                 </button>
             </div>
         </div>
@@ -755,6 +818,15 @@
                 <div class="markdown-header">
                     <span data-i18n="markdownLabel">Markdown for README.md</span>
                     <div class="markdown-actions">
+                        <select class="form-input snippet-format" id="snippetFormat" aria-label="Snippet format">
+                            <option value="markdown" data-i18n="snippetMarkdown">Markdown</option>
+                            <option value="html" data-i18n="snippetHtml">HTML</option>
+                            <option value="url" data-i18n="snippetUrl">URL</option>
+                        </select>
+                        <button class="btn-copy" id="shareBtn" type="button" disabled>
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3.5a.75.75 0 0 0-1.5 0v3.5a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3.5a.75.75 0 0 0 0-1.5h-3.5Z"></path><path d="M10.5 1.5h4v4a.75.75 0 0 1-1.5 0V3.56L7.28 9.28a.75.75 0 0 1-1.06-1.06L11.94 3H10.5a.75.75 0 0 1 0-1.5Z"></path></svg>
+                            <span data-i18n="shareBtn">Share link</span>
+                        </button>
                         <button class="btn-copy" id="downloadBtn" type="button" disabled>
                             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"></path><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"></path></svg>
                             <span data-i18n="downloadBtn">Download SVG</span>
@@ -793,530 +865,6 @@
 <script src="./i18n/sv.js"></script>
 <script src="./i18n/cs.js"></script>
 
-<script>
-(() => {
-    'use strict';
-
-    // -----------------------------------------------------------------------
-    // Constants and small helpers
-    // -----------------------------------------------------------------------
-
-    const i18n = window.__I18N;
-    const CONFIG_STORAGE_KEY = 'badge-generator:config:v1';
-    const LANG_STORAGE_KEY = 'badge-generator:lang';
-    const THEME_STORAGE_KEY = 'badge-generator:ui-theme';
-    const PROJECT_URL = 'https://github.com/readme-SVG/readme-pr-contributors-rating';
-
-    /** How long to wait for the badge preview before reporting a failure. */
-    const PREVIEW_TIMEOUT_MS = 15000;
-
-    /** Server-side defaults; only non-default values end up in the URL. */
-    const DEFAULTS = {
-        username: 'OstinUA',
-        limit: '7',
-        badgeWidth: '830',
-        rowHeight: '40',
-        repoWidth: '180',
-        langWidth: '80',
-        prWidth: '320',
-        dateWidth: '90',
-        changesWidth: '100',
-        starsWidth: '60',
-        previewHeight: '220',
-        repoNameFormat: 'full',
-        themePreset: 'dark'
-    };
-
-    const COLOR_NAMES = ['bg', 'text', 'title', 'muted', 'star', 'border', 'shadow'];
-
-    const THEME_PRESETS = {
-        dark: { bg: '0d1117', text: 'c9d1d9', title: '58a6ff', muted: '8b949e', star: 'e3b341', border: '30363d', shadow: '000000' },
-        light: { bg: 'ffffff', text: '24292f', title: '0969da', muted: '57606a', star: 'bf8700', border: 'd0d7de', shadow: '000000' },
-        dimmed: { bg: '22272e', text: 'adbac7', title: '539bf5', muted: '768390', star: 'd29922', border: '444c56', shadow: '000000' },
-        night: { bg: '0b1320', text: 'd8e5ff', title: '4ea1ff', muted: '89a4d6', star: 'ffd166', border: '1d3557', shadow: '000000' },
-        transparent: { bg: '000000', text: 'ffffff', title: 'ffffff', muted: 'd1d5db', star: 'ffd166', border: '000000', shadow: '000000', transparent: true }
-    };
-
-    /** Maps a column key to the i18n key of its checkbox label. */
-    const COLUMN_LABEL_KEYS = {
-        pr: 'showPullsLabel',
-        date: 'showDateLabel',
-        lang: 'showLangLabel',
-        changes: 'showChangesLabel'
-    };
-
-    const $ = (id) => document.getElementById(id);
-
-    // Fail fast when a locale file is broken or out of sync with the schema.
-    window.validateI18nIntegrity();
-
-    // -----------------------------------------------------------------------
-    // UI theme (light / dark chrome of the configurator itself)
-    // -----------------------------------------------------------------------
-
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-    function initUiTheme() {
-        const saved = localStorage.getItem(THEME_STORAGE_KEY);
-        const theme = saved === 'dark' || saved === 'light' ? saved : (prefersDark ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', theme);
-    }
-
-    function toggleUiTheme() {
-        const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-        const next = current === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem(THEME_STORAGE_KEY, next);
-    }
-
-    // -----------------------------------------------------------------------
-    // Column order state
-    // -----------------------------------------------------------------------
-
-    let columnOrderState = [
-        { key: 'pr', enabled: true },
-        { key: 'date', enabled: true },
-        { key: 'lang', enabled: false },
-        { key: 'changes', enabled: false }
-    ];
-
-    function moveColumn(key, direction) {
-        const index = columnOrderState.findIndex((item) => item.key === key);
-        const target = index + direction;
-        if (index < 0 || target < 0 || target >= columnOrderState.length) return;
-        const [item] = columnOrderState.splice(index, 1);
-        columnOrderState.splice(target, 0, item);
-        renderColumnOrderList();
-    }
-
-    function renderColumnOrderList() {
-        const list = $('columnOrderList');
-        list.textContent = '';
-
-        columnOrderState.forEach((item, index) => {
-            const row = document.createElement('div');
-            row.className = 'column-order-item';
-
-            const left = document.createElement('div');
-            left.className = 'checkbox-row';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = `col-${item.key}`;
-            checkbox.checked = item.enabled;
-            checkbox.addEventListener('change', (event) => {
-                item.enabled = event.target.checked;
-            });
-
-            const label = document.createElement('label');
-            label.setAttribute('for', checkbox.id);
-            label.textContent = i18n[currentLang][COLUMN_LABEL_KEYS[item.key]] || item.key;
-
-            left.append(checkbox, label);
-
-            const actions = document.createElement('div');
-            actions.className = 'order-actions';
-
-            const upButton = document.createElement('button');
-            upButton.type = 'button';
-            upButton.className = 'order-btn';
-            upButton.textContent = '▲';
-            upButton.disabled = index === 0;
-            upButton.addEventListener('click', () => moveColumn(item.key, -1));
-
-            const downButton = document.createElement('button');
-            downButton.type = 'button';
-            downButton.className = 'order-btn';
-            downButton.textContent = '▼';
-            downButton.disabled = index === columnOrderState.length - 1;
-            downButton.addEventListener('click', () => moveColumn(item.key, 1));
-
-            actions.append(upButton, downButton);
-            row.append(left, actions);
-            list.appendChild(row);
-        });
-    }
-
-    // -----------------------------------------------------------------------
-    // Internationalization
-    // -----------------------------------------------------------------------
-
-    let currentLang = 'en';
-
-    function switchLanguage(lang) {
-        if (!i18n[lang]) return;
-        currentLang = lang;
-        localStorage.setItem(LANG_STORAGE_KEY, lang);
-        document.documentElement.setAttribute('lang', lang);
-        document.title = i18n[lang].title;
-        document.querySelectorAll('[data-i18n]').forEach((element) => {
-            const key = element.getAttribute('data-i18n');
-            if (i18n[lang][key]) element.textContent = i18n[lang][key];
-        });
-        renderColumnOrderList();
-    }
-
-    // -----------------------------------------------------------------------
-    // Badge theme presets and color inputs
-    // -----------------------------------------------------------------------
-
-    function setColor(name, value) {
-        $(`${name}Color`).value = value;
-        $(`${name}ColorPicker`).value = `#${value}`;
-    }
-
-    function applyThemePreset(name) {
-        const preset = THEME_PRESETS[name];
-        if (!preset) return;
-        COLOR_NAMES.forEach((color) => setColor(color, preset[color] || '000000'));
-        $('previewArea').classList.toggle('checkerboard', Boolean(preset.transparent));
-    }
-
-    function setupColorSync(name) {
-        const picker = $(`${name}ColorPicker`);
-        const hex = $(`${name}Color`);
-
-        const markCustom = () => {
-            $('themePreset').value = 'custom';
-            $('previewArea').classList.remove('checkerboard');
-        };
-
-        picker.addEventListener('input', () => {
-            hex.value = picker.value.substring(1);
-            markCustom();
-        });
-        hex.addEventListener('input', () => {
-            const normalized = hex.value.replace(/[^a-fA-F0-9]/g, '').slice(0, 6);
-            hex.value = normalized;
-            if (normalized.length === 6) picker.value = `#${normalized}`;
-            markCustom();
-        });
-    }
-
-    // -----------------------------------------------------------------------
-    // Configuration persistence (localStorage)
-    // -----------------------------------------------------------------------
-
-    const CONFIG_FIELDS = [
-        'username', 'limit', 'customTitle', 'repoNameFormat', 'themePreset',
-        'repoWidth', 'langWidth', 'prWidth', 'dateWidth', 'changesWidth',
-        'starsWidth', 'badgeWidth', 'rowHeight', 'previewHeight'
-    ];
-
-    function collectConfig() {
-        const config = {};
-        CONFIG_FIELDS.forEach((field) => {
-            config[field] = $(field).value;
-        });
-        COLOR_NAMES.forEach((color) => {
-            config[`${color}Color`] = $(`${color}Color`).value;
-        });
-        config.uniqueRepos = $('uniqueRepos').checked;
-        config.showRejected = $('showRejected').checked;
-        config.columns = columnOrderState.map((item) => ({ ...item }));
-        return config;
-    }
-
-    function applyConfig(config) {
-        if (!config || typeof config !== 'object') return;
-
-        CONFIG_FIELDS.forEach((field) => {
-            if (typeof config[field] === 'string' || typeof config[field] === 'number') {
-                $(field).value = String(config[field]);
-            }
-        });
-        COLOR_NAMES.forEach((color) => {
-            const value = config[`${color}Color`];
-            if (typeof value === 'string' && /^[a-fA-F0-9]{6}$/.test(value)) {
-                setColor(color, value);
-            }
-        });
-        $('uniqueRepos').checked = Boolean(config.uniqueRepos);
-        $('showRejected').checked = Boolean(config.showRejected);
-
-        if (Array.isArray(config.columns) && config.columns.length === columnOrderState.length) {
-            const known = new Set(columnOrderState.map((item) => item.key));
-            const restored = config.columns.filter((item) => item && known.has(item.key));
-            if (new Set(restored.map((item) => item.key)).size === known.size) {
-                columnOrderState = restored.map((item) => ({ key: item.key, enabled: Boolean(item.enabled) }));
-            }
-        }
-
-        applyThemePreset($('themePreset').value);
-    }
-
-    function saveConfig() {
-        try {
-            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(collectConfig()));
-        } catch (error) {
-            // Storage can be unavailable (private mode, quota); persistence is
-            // a convenience, so failures are intentionally ignored.
-        }
-    }
-
-    function restoreConfig() {
-        try {
-            const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
-            if (raw) applyConfig(JSON.parse(raw));
-        } catch (error) {
-            localStorage.removeItem(CONFIG_STORAGE_KEY);
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Badge URL construction
-    // -----------------------------------------------------------------------
-
-    function buildBadgeParams() {
-        const enabledByKey = Object.fromEntries(columnOrderState.map((item) => [item.key, item.enabled]));
-        const params = new URLSearchParams();
-
-        const username = $('username').value.trim() || DEFAULTS.username;
-        params.set('username', username);
-
-        const setIfNotDefault = (param, elementId, defaultValue) => {
-            const value = $(elementId).value;
-            if (value !== '' && value !== defaultValue) params.set(param, value);
-        };
-
-        setIfNotDefault('limit', 'limit', DEFAULTS.limit);
-        params.set('show_pr', enabledByKey.pr ? 'true' : 'false');
-        params.set('show_date', enabledByKey.date ? 'true' : 'false');
-        params.set('show_lang', enabledByKey.lang ? 'true' : 'false');
-        params.set('show_changes', enabledByKey.changes ? 'true' : 'false');
-        if ($('uniqueRepos').checked) params.set('unique_repos', 'true');
-        if ($('showRejected').checked) params.set('show_rejected', 'true');
-        if ($('repoNameFormat').value !== DEFAULTS.repoNameFormat) params.set('repo_name_format', $('repoNameFormat').value);
-        params.set('col_order', columnOrderState.map((item) => item.key).join(','));
-
-        setIfNotDefault('badge_width', 'badgeWidth', DEFAULTS.badgeWidth);
-        setIfNotDefault('row_height', 'rowHeight', DEFAULTS.rowHeight);
-        setIfNotDefault('repo_width', 'repoWidth', DEFAULTS.repoWidth);
-        setIfNotDefault('lang_width', 'langWidth', DEFAULTS.langWidth);
-        setIfNotDefault('pr_width', 'prWidth', DEFAULTS.prWidth);
-        setIfNotDefault('date_width', 'dateWidth', DEFAULTS.dateWidth);
-        setIfNotDefault('changes_width', 'changesWidth', DEFAULTS.changesWidth);
-        setIfNotDefault('stars_width', 'starsWidth', DEFAULTS.starsWidth);
-
-        const customTitle = $('customTitle').value.trim();
-        if (customTitle) params.set('custom_title', customTitle);
-
-        const dark = THEME_PRESETS.dark;
-        const colorParams = {
-            bg_color: ['bgColor', dark.bg],
-            text_color: ['textColor', dark.text],
-            title_color: ['titleColor', dark.title],
-            muted_color: ['mutedColor', dark.muted],
-            star_color: ['starColor', dark.star],
-            border_color: ['borderColor', dark.border],
-            shadow_color: ['shadowColor', '000000']
-        };
-        Object.entries(colorParams).forEach(([param, [elementId, defaultValue]]) => {
-            const value = $(elementId).value;
-            if (value !== defaultValue) params.set(param, value);
-        });
-
-        if ($('themePreset').value === 'transparent') params.set('transparent', 'true');
-
-        return params;
-    }
-
-    function buildBadgeUrl() {
-        return `${window.location.origin}/api/badge?${buildBadgeParams().toString()}`;
-    }
-
-    // -----------------------------------------------------------------------
-    // Preview, markdown output, downloads
-    // -----------------------------------------------------------------------
-
-    let currentBadgeUrl = null;
-    /** Monotonic id of the newest preview request; older probes are ignored. */
-    let previewRequestId = 0;
-
-    function clearPreviewError() {
-        const existing = $('previewError');
-        if (existing) existing.remove();
-    }
-
-    function showPreviewError() {
-        clearPreviewError();
-        const error = document.createElement('div');
-        error.className = 'error-msg';
-        error.id = 'previewError';
-        error.setAttribute('role', 'alert');
-        error.textContent = i18n[currentLang].errorFetch;
-        $('previewArea').appendChild(error);
-    }
-
-    function generate() {
-        const url = buildBadgeUrl();
-        const badge = $('badge');
-        const spinner = $('spinner');
-        const placeholder = $('previewPlaceholder');
-        const button = $('generateBtn');
-
-        badge.style.display = 'none';
-        placeholder.style.display = 'none';
-        spinner.style.display = 'block';
-        button.disabled = true;
-        clearPreviewError();
-
-        currentBadgeUrl = url;
-        $('markdownCode').textContent = `[![Top PRs](${url})](${PROJECT_URL})`;
-        $('copyBtn').disabled = false;
-        $('downloadBtn').disabled = false;
-
-        // Load into a detached image first so a failing request never leaves a
-        // broken image in the preview. The cache-buster guarantees the preview
-        // reflects the latest server-side data on every regeneration.
-        const requestId = (previewRequestId += 1);
-        let timeoutId = 0;
-
-        const settle = (loaded) => () => {
-            // A slow earlier request must not overwrite a newer one.
-            if (requestId !== previewRequestId) return;
-            clearTimeout(timeoutId);
-
-            if (loaded) {
-                badge.src = probe.src;
-                badge.style.display = 'block';
-            } else {
-                placeholder.style.display = 'inline';
-                showPreviewError();
-            }
-            spinner.style.display = 'none';
-            button.disabled = false;
-        };
-
-        const probe = new Image();
-        probe.addEventListener('load', settle(true));
-        probe.addEventListener('error', settle(false));
-
-        // Watchdog: a request that neither resolves nor fails (stalled
-        // connection, blocked by an extension) must not pin the UI to the
-        // spinner and leave the button disabled forever.
-        timeoutId = setTimeout(settle(false), PREVIEW_TIMEOUT_MS);
-
-        probe.src = `${url}&_=${Date.now()}`;
-
-        saveConfig();
-    }
-
-    async function copyMarkdown() {
-        const text = $('markdownCode').textContent;
-        if (!text || text === '-') return;
-
-        const button = $('copyBtn');
-        const label = button.querySelector('[data-i18n="copyBtn"]');
-        let copied = false;
-
-        try {
-            if (navigator.clipboard && window.isSecureContext) {
-                await navigator.clipboard.writeText(text);
-                copied = true;
-            }
-        } catch (error) {
-            copied = false;
-        }
-
-        if (!copied) {
-            // Fallback for insecure contexts and older browsers.
-            const scratch = document.createElement('textarea');
-            scratch.value = text;
-            scratch.setAttribute('readonly', '');
-            scratch.style.position = 'fixed';
-            scratch.style.opacity = '0';
-            document.body.appendChild(scratch);
-            scratch.select();
-            try {
-                copied = document.execCommand('copy');
-            } catch (error) {
-                copied = false;
-            }
-            scratch.remove();
-        }
-
-        if (!copied) return;
-
-        label.textContent = i18n[currentLang].copiedBtn;
-        button.classList.add('copied');
-        setTimeout(() => {
-            label.textContent = i18n[currentLang].copyBtn;
-            button.classList.remove('copied');
-        }, 2000);
-    }
-
-    async function downloadSvg() {
-        const badgeSrc = $('badge').style.display !== 'none' ? $('badge').src : '';
-        const targetUrl = badgeSrc || currentBadgeUrl;
-        if (!targetUrl) return;
-        try {
-            const response = await fetch(targetUrl);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const blob = await response.blob();
-            const objectUrl = URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = objectUrl;
-            anchor.download = 'top-pr-contributions.svg';
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            URL.revokeObjectURL(objectUrl);
-        } catch (error) {
-            showPreviewError();
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Preview window sizing
-    // -----------------------------------------------------------------------
-
-    function updatePreviewWindowSize() {
-        const parsed = Number.parseInt($('previewHeight').value, 10);
-        const height = Number.isFinite(parsed) ? Math.min(580, Math.max(120, parsed)) : 220;
-        $('previewArea').style.minHeight = `${height}px`;
-    }
-
-    // -----------------------------------------------------------------------
-    // Wiring
-    // -----------------------------------------------------------------------
-
-    function init() {
-        initUiTheme();
-
-        const savedLang = localStorage.getItem(LANG_STORAGE_KEY);
-        $('langSelect').value = i18n[savedLang] ? savedLang : 'en';
-
-        COLOR_NAMES.forEach(setupColorSync);
-        restoreConfig();
-        switchLanguage($('langSelect').value);
-        updatePreviewWindowSize();
-
-        $('themeToggle').addEventListener('click', toggleUiTheme);
-        $('langSelect').addEventListener('change', (event) => switchLanguage(event.target.value));
-        $('themePreset').addEventListener('change', (event) => {
-            applyThemePreset(event.target.value);
-            saveConfig();
-        });
-        $('generateBtn').addEventListener('click', generate);
-        $('copyBtn').addEventListener('click', copyMarkdown);
-        $('downloadBtn').addEventListener('click', downloadSvg);
-        $('previewHeight').addEventListener('input', updatePreviewWindowSize);
-
-        // Persist the configuration whenever any control settles, so a reload
-        // never loses work in progress.
-        document.querySelectorAll('.panel input, .panel select').forEach((element) => {
-            element.addEventListener('change', saveConfig);
-        });
-
-        // Allow regenerating with Enter inside the username field.
-        $('username').addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') generate();
-        });
-    }
-
-    init();
-})();
-</script>
+<script src="./assets/app.js"></script>
 </body>
 </html>
