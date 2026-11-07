@@ -35,6 +35,9 @@ jobs:
       - name: Lint JavaScript and validate i18n schema
         run: npm run lint
 
+      - name: Run unit tests
+        run: npm test
+
       - name: Validate JavaScript syntax (api/)
         run: |
           while IFS= read -r -d '' file; do

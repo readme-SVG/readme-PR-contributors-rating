@@ -19,13 +19,23 @@
 // ---------------------------------------------------------------------------
 
 const GRAPHQL_ENDPOINT = 'https://api.github.com/graphql';
+const REST_API_ROOT = 'https://api.github.com';
 
 /** Maximum number of search pages fetched per request (100 nodes each). */
 const MAX_PAGES = 5;
 const PAGE_SIZE = 100;
 
+/** Number of `repo:owner/name` qualifiers batched per REST search request. */
+const REST_REPO_BATCH_SIZE = 30;
+
 /** Per-request timeout for upstream GitHub API calls, in milliseconds. */
-const UPSTREAM_TIMEOUT_MS = 10_000;
+const UPSTREAM_TIMEOUT_MS = 8_000;
+
+/**
+ * Cumulative budget for multi-page GraphQL search pagination, kept comfortably
+ * below Vercel Hobby's 10 s serverless execution limit.
+ */
+const GRAPHQL_PAGINATION_BUDGET_MS = 6_500;
 
 /**
  * Warm-instance cache for raw pull request pages, keyed by GitHub username.
@@ -273,8 +283,6 @@ const PULL_REQUEST_SEARCH_QUERY = `
                     createdAt
                     state
                     mergedAt
-                    additions
-                    deletions
                     repository {
                         url
                         stargazerCount
@@ -288,13 +296,69 @@ const PULL_REQUEST_SEARCH_QUERY = `
     }
 `;
 
-function buildAuthHeaders() {
-    const token = process.env.GITHUB_TOKEN;
-    const headers = { 'User-Agent': 'readme-pr-contributors-rating' };
+const PULL_REQUEST_DIFF_STATS_QUERY = `
+    query FetchPrDiffStats($ids: [ID!]!) {
+        nodes(ids: $ids) {
+            ... on PullRequest {
+                id
+                additions
+                deletions
+            }
+        }
+    }
+`;
+
+function stripWrappingQuotes(value) {
+    if (
+        value.length >= 2 &&
+        ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'")))
+    ) {
+        return value.slice(1, -1).trim();
+    }
+    return value;
+}
+
+/**
+ * Normalize a raw token value read from environment variables. Strips
+ * surrounding whitespace, accidental `KEY=` assignments, wrapping quotes and
+ * redundant `Bearer` / `token` scheme prefixes that are often pasted into
+ * hosting dashboards by mistake.
+ *
+ * @param {string | undefined} raw Raw environment variable value.
+ * @returns {string} Cleaned token string, or `""` when nothing usable remains.
+ */
+export function normalizeGithubToken(raw) {
+    if (typeof raw !== 'string') return '';
+    let value = raw.trim();
+    if (!value) return '';
+
+    value = value.replace(/^(?:GITHUB_TOKEN|GH_TOKEN)\s*=\s*/i, '').trim();
+    value = stripWrappingQuotes(value);
+    value = value.replace(/^(?:bearer|token)\s+/i, '').trim();
+    value = stripWrappingQuotes(value);
+    return value;
+}
+
+function resolveGithubToken() {
+    return normalizeGithubToken(process.env.GITHUB_TOKEN) || normalizeGithubToken(process.env.GH_TOKEN);
+}
+
+function buildGithubHeaders(token) {
+    const headers = {
+        'User-Agent': 'readme-pr-contributors-rating',
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+    };
     if (token) {
-        headers.Authorization = `token ${token}`;
+        headers.Authorization = `Bearer ${token}`;
     }
     return headers;
+}
+
+/** Clear the warm-instance PR cache (exposed for deterministic unit tests). */
+export function clearPrCache() {
+    prCache.clear();
 }
 
 /** Evict expired entries, then trim the cache to its maximum size (FIFO). */
@@ -310,82 +374,124 @@ function pruneCache() {
     }
 }
 
-/**
- * Fetch every pull request authored by `username` (up to MAX_PAGES pages)
- * through the GitHub GraphQL search API. Results are cached per username for
- * a short TTL to absorb repeated README hits served by the same instance.
- *
- * @param {string} username Sanitized GitHub login.
- * @returns {Promise<Array<object>>} Normalized pull request records.
- * @throws {BadgeUpstreamError} On rate limits, auth failures or API errors.
- */
-async function fetchUserPullRequests(username) {
-    const cached = prCache.get(username);
-    if (cached && Date.now() - cached.timestamp < PR_CACHE_TTL_MS) {
-        return cached.prs;
+function isRateLimitResponse(response, bodyText = '') {
+    if (response.status === 429) return true;
+    if (response.headers && typeof response.headers.get === 'function') {
+        if (response.headers.get('x-ratelimit-remaining') === '0') return true;
+        if (response.headers.get('retry-after')) return true;
     }
+    return /rate limit|secondary rate|abuse detection/i.test(bodyText);
+}
 
-    const headers = { ...buildAuthHeaders(), 'Content-Type': 'application/json' };
+/**
+ * Translate a non-2xx GitHub HTTP response into a specific, actionable
+ * `BadgeUpstreamError`.
+ */
+async function throwForHttpError(response, { token, username, allow422 = false }) {
+    if (allow422 && response.status === 422) {
+        throw new BadgeUpstreamError(`User "${username}" not found.`);
+    }
+    if (response.status === 401) {
+        throw new BadgeUpstreamError(
+            token
+                ? 'Invalid or expired GITHUB_TOKEN in deployment settings.'
+                : 'GitHub API authentication required (set GITHUB_TOKEN).'
+        );
+    }
+    if (response.status === 403 || response.status === 429) {
+        const bodyText = await response.text().catch(() => '');
+        if (isRateLimitResponse(response, bodyText)) {
+            throw new BadgeUpstreamError(
+                token
+                    ? 'API rate limit exceeded. Please try again later.'
+                    : 'Anonymous API rate limit exceeded. Set GITHUB_TOKEN.'
+            );
+        }
+        throw new BadgeUpstreamError('GitHub API access forbidden (check GITHUB_TOKEN permissions).');
+    }
+    throw new BadgeUpstreamError(`GitHub API error (${response.status}).`);
+}
+
+async function fetchWithTimeout(url, options) {
+    try {
+        return await fetch(url, {
+            ...options,
+            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+        });
+    } catch (error) {
+        if (error && error.name === 'TimeoutError') {
+            throw new BadgeUpstreamError('GitHub API request timed out. Please try again later.');
+        }
+        throw error;
+    }
+}
+
+/**
+ * Fetch pull requests authored by `username` (up to MAX_PAGES * 100 PRs) via
+ * the authenticated GitHub GraphQL API.
+ */
+async function fetchPullRequestsGraphql(username, token) {
+    const headers = { ...buildGithubHeaders(token), 'Content-Type': 'application/json' };
+    const startedAt = Date.now();
     const prs = [];
     let cursor = null;
     let hasNextPage = true;
     let page = 0;
 
     while (hasNextPage && page < MAX_PAGES) {
-        let response;
-        try {
-            response = await fetch(GRAPHQL_ENDPOINT, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    query: PULL_REQUEST_SEARCH_QUERY,
-                    variables: {
-                        query: `is:pr author:${username} sort:created-desc`,
-                        first: PAGE_SIZE,
-                        after: cursor
-                    }
-                }),
-                signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
-            });
-        } catch (error) {
-            if (error && error.name === 'TimeoutError') {
-                throw new BadgeUpstreamError('GitHub API request timed out. Please try again later.');
-            }
-            throw error;
+        if (page > 0 && Date.now() - startedAt >= GRAPHQL_PAGINATION_BUDGET_MS) {
+            break;
         }
 
-        if (response.status === 401) {
-            // The deployment token is invalid or revoked — not the viewer's fault,
-            // but there is nothing actionable they can do either.
-            throw new BadgeUpstreamError('GitHub API authentication failed.');
-        }
-        if (response.status === 403 || response.status === 429) {
-            throw new BadgeUpstreamError('API rate limit exceeded. Please try again later.');
-        }
+        const response = await fetchWithTimeout(GRAPHQL_ENDPOINT, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                query: PULL_REQUEST_SEARCH_QUERY,
+                variables: {
+                    query: `is:pr author:${username} sort:created-desc`,
+                    first: PAGE_SIZE,
+                    after: cursor
+                }
+            })
+        });
+
         if (!response.ok) {
-            throw new BadgeUpstreamError(`GitHub API error (${response.status}).`);
+            await throwForHttpError(response, { token, username });
         }
 
         const payload = await response.json();
+        const search = payload.data && payload.data.search;
+
         if (Array.isArray(payload.errors) && payload.errors.length) {
-            const combined = payload.errors.map((entry) => entry.message).join(' ');
+            const combined = payload.errors
+                .map((entry) => entry && entry.message)
+                .filter(Boolean)
+                .join(' ');
             if (/Could not resolve to a User/i.test(combined)) {
                 throw new BadgeUpstreamError(`User "${username}" not found.`);
             }
-            if (/rate limit|abuse/i.test(combined)) {
+            if (/rate limit|secondary rate|abuse/i.test(combined)) {
                 throw new BadgeUpstreamError('API rate limit exceeded. Please try again later.');
             }
-            throw new BadgeUpstreamError('GitHub GraphQL query failed.');
+            if (/bad credentials|requires authentication/i.test(combined)) {
+                throw new BadgeUpstreamError('Invalid or expired GITHUB_TOKEN in deployment settings.');
+            }
+            // Partial node errors (e.g. a single PR in an org-SAML-restricted
+            // repository) still return valid `data.search.nodes` alongside
+            // `null` placeholders; only abort if `search` itself is missing.
+            if (!search) {
+                throw new BadgeUpstreamError('GitHub GraphQL query failed.');
+            }
         }
 
-        const search = payload.data && payload.data.search;
         if (!search) {
             throw new BadgeUpstreamError('GitHub GraphQL query failed.');
         }
 
         for (const node of Array.isArray(search.nodes) ? search.nodes : []) {
             if (!node || !node.repository) continue;
-            prs.push(normalizePullRequest(node));
+            prs.push(normalizeGraphqlPullRequest(node));
         }
 
         hasNextPage = Boolean(search.pageInfo && search.pageInfo.hasNextPage);
@@ -393,13 +499,193 @@ async function fetchUserPullRequests(username) {
         page += 1;
     }
 
+    return prs;
+}
+
+/** Extract `owner/repo` from a GitHub repository URL (`https://.../owner/repo`). */
+function extractRepoFullName(repositoryUrl) {
+    const parts = String(repositoryUrl || '').split('/').filter(Boolean).slice(-2);
+    return parts.length === 2 ? `${parts[0]}/${parts[1]}` : '';
+}
+
+/**
+ * Unauthenticated fallback via the GitHub REST Search API. Because GitHub's
+ * GraphQL endpoint strictly requires a token, deployments that omit
+ * `GITHUB_TOKEN` fall back to `/search/issues` plus batched
+ * `/search/repositories` lookups (typically 2 requests per uncached user).
+ */
+async function fetchPullRequestsRest(username) {
+    const headers = buildGithubHeaders('');
+    const issueParams = new URLSearchParams({
+        q: `is:pr author:${username}`,
+        sort: 'created',
+        order: 'desc',
+        per_page: String(PAGE_SIZE)
+    });
+
+    const issueResponse = await fetchWithTimeout(
+        `${REST_API_ROOT}/search/issues?${issueParams.toString()}`,
+        { method: 'GET', headers }
+    );
+    if (!issueResponse.ok) {
+        await throwForHttpError(issueResponse, { token: '', username, allow422: true });
+    }
+
+    const issuePayload = await issueResponse.json();
+    const items = Array.isArray(issuePayload.items) ? issuePayload.items : [];
+    if (items.length === 0) return [];
+
+    // Collect unique `owner/repo` identifiers and batch-query their star counts
+    // and primary languages through `/search/repositories`.
+    const uniqueRepos = [];
+    const seenLower = new Set();
+    for (const item of items) {
+        const fullName = extractRepoFullName(item && item.repository_url);
+        if (!fullName) continue;
+        const lower = fullName.toLowerCase();
+        if (!seenLower.has(lower)) {
+            seenLower.add(lower);
+            uniqueRepos.push(fullName);
+        }
+    }
+
+    const repoMeta = new Map();
+    const batches = [];
+    for (let i = 0; i < uniqueRepos.length; i += REST_REPO_BATCH_SIZE) {
+        batches.push(uniqueRepos.slice(i, i + REST_REPO_BATCH_SIZE));
+    }
+
+    await Promise.all(
+        batches.map(async (batch) => {
+            const repoParams = new URLSearchParams({
+                q: batch.map((name) => `repo:${name}`).join(' '),
+                per_page: '100'
+            });
+            const repoResponse = await fetchWithTimeout(
+                `${REST_API_ROOT}/search/repositories?${repoParams.toString()}`,
+                { method: 'GET', headers }
+            );
+            // If every repository in a batch was deleted or turned private,
+            // GitHub returns 422; treat that batch as empty metadata.
+            if (repoResponse.status === 422) return;
+            if (!repoResponse.ok) {
+                await throwForHttpError(repoResponse, { token: '', username });
+            }
+            const repoPayload = await repoResponse.json();
+            for (const repo of Array.isArray(repoPayload.items) ? repoPayload.items : []) {
+                if (!repo || typeof repo.full_name !== 'string') continue;
+                repoMeta.set(repo.full_name.toLowerCase(), {
+                    stars: Number.isFinite(repo.stargazers_count) ? repo.stargazers_count : 0,
+                    language: repo.language || null
+                });
+            }
+        })
+    );
+
+    const prs = [];
+    for (const item of items) {
+        if (!item || !item.repository_url) continue;
+        const fullName = extractRepoFullName(item.repository_url);
+        const meta = repoMeta.get(fullName.toLowerCase()) || { stars: 0, language: null };
+        prs.push(normalizeRestPullRequest(item, meta));
+    }
+    return prs;
+}
+
+/**
+ * Lazily populate `additions` and `deletions` for the already-selected badge
+ * rows (`<= 15`) when `show_changes=true` was requested. Fetching diff stats
+ * only for displayed rows avoids hundreds of slow Git RPCs during multi-page
+ * search pagination. Best-effort: transient failures fall back to `+0 / -0`
+ * without failing the badge, while successful lookups update the cache.
+ */
+async function enrichPullRequestChanges(rows, token) {
+    const missing = rows.filter((pr) => pr.additions === null || pr.deletions === null);
+    if (missing.length === 0) return;
+
+    if (token) {
+        const byId = new Map();
+        for (const pr of missing) {
+            if (typeof pr.id === 'string' && pr.id) {
+                byId.set(pr.id, pr);
+            }
+        }
+        if (byId.size === 0) return;
+
+        try {
+            const response = await fetchWithTimeout(GRAPHQL_ENDPOINT, {
+                method: 'POST',
+                headers: { ...buildGithubHeaders(token), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: PULL_REQUEST_DIFF_STATS_QUERY,
+                    variables: { ids: [...byId.keys()] }
+                })
+            });
+            if (!response.ok) return;
+            const payload = await response.json();
+            const nodes = payload && payload.data && payload.data.nodes;
+            for (const node of Array.isArray(nodes) ? nodes : []) {
+                if (!node || !node.id) continue;
+                const target = byId.get(node.id);
+                if (!target) continue;
+                target.additions = Number.isFinite(node.additions) ? node.additions : 0;
+                target.deletions = Number.isFinite(node.deletions) ? node.deletions : 0;
+            }
+        } catch {
+            // Keep null so renderRow falls back to +0/-0 without poisoning cache.
+        }
+        return;
+    }
+
+    const restTargets = missing.filter(
+        (pr) => typeof pr.pullApiUrl === 'string' && pr.pullApiUrl.startsWith(`${REST_API_ROOT}/repos/`)
+    );
+    if (restTargets.length === 0) return;
+
+    const headers = buildGithubHeaders('');
+    await Promise.all(
+        restTargets.map(async (pr) => {
+            try {
+                const response = await fetchWithTimeout(pr.pullApiUrl, { method: 'GET', headers });
+                if (!response.ok) return;
+                const detail = await response.json();
+                pr.additions = Number.isFinite(detail.additions) ? detail.additions : 0;
+                pr.deletions = Number.isFinite(detail.deletions) ? detail.deletions : 0;
+            } catch {
+                // Keep null so renderRow falls back to +0/-0 without poisoning cache.
+            }
+        })
+    );
+}
+
+/**
+ * Fetch pull requests authored by `username`, using GraphQL when `token` is
+ * available and falling back to the public REST Search API otherwise. Results
+ * are cached per `(mode, username)` for a short TTL to shield upstream quotas.
+ *
+ * @param {string} username Sanitized GitHub login.
+ * @param {string} token Normalized GitHub token (empty string if unset).
+ * @returns {Promise<Array<object>>} Normalized pull request records.
+ * @throws {BadgeUpstreamError} On rate limits, auth failures or API errors.
+ */
+async function fetchUserPullRequests(username, token) {
+    const cacheKey = `${token ? 'graphql' : 'rest'}:${username.toLowerCase()}`;
+    const cached = prCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < PR_CACHE_TTL_MS) {
+        return cached.prs;
+    }
+
+    const prs = token
+        ? await fetchPullRequestsGraphql(username, token)
+        : await fetchPullRequestsRest(username);
+
     pruneCache();
-    prCache.set(username, { timestamp: Date.now(), prs });
+    prCache.set(cacheKey, { timestamp: Date.now(), prs });
     return prs;
 }
 
 /** Map a GraphQL PullRequest node onto the flat record used by the renderer. */
-function normalizePullRequest(node) {
+function normalizeGraphqlPullRequest(node) {
     return {
         id: node.id,
         title: node.title || '',
@@ -410,8 +696,28 @@ function normalizePullRequest(node) {
         repositoryUrl: node.repository.url || '',
         repoStars: Number.isFinite(node.repository.stargazerCount) ? node.repository.stargazerCount : 0,
         repoLanguage: node.repository.primaryLanguage ? node.repository.primaryLanguage.name : null,
-        additions: Number.isFinite(node.additions) ? node.additions : 0,
-        deletions: Number.isFinite(node.deletions) ? node.deletions : 0
+        additions: Number.isFinite(node.additions) ? node.additions : null,
+        deletions: Number.isFinite(node.deletions) ? node.deletions : null,
+        pullApiUrl: null
+    };
+}
+
+/** Map a REST `/search/issues` PR item + repo metadata onto the renderer record. */
+function normalizeRestPullRequest(item, repoMeta) {
+    const pullInfo = item.pull_request || {};
+    return {
+        id: String(item.node_id || item.id || ''),
+        title: item.title || '',
+        url: item.html_url || '',
+        createdAt: item.created_at,
+        state: String(item.state || '').toLowerCase(),
+        mergedAt: pullInfo.merged_at || null,
+        repositoryUrl: item.repository_url || '',
+        repoStars: repoMeta.stars,
+        repoLanguage: repoMeta.language,
+        additions: null,
+        deletions: null,
+        pullApiUrl: typeof pullInfo.url === 'string' ? pullInfo.url : null
     };
 }
 
@@ -432,9 +738,10 @@ function selectPullRequests(prs, opts) {
     if (opts.uniqueRepos) {
         const latestPerRepo = new Map();
         for (const pr of selected) {
-            const existing = latestPerRepo.get(pr.repositoryUrl);
+            const repoKey = String(pr.repositoryUrl || '').toLowerCase();
+            const existing = latestPerRepo.get(repoKey);
             if (!existing || Date.parse(pr.createdAt) > Date.parse(existing.createdAt)) {
-                latestPerRepo.set(pr.repositoryUrl, pr);
+                latestPerRepo.set(repoKey, pr);
             }
         }
         selected = [...latestPerRepo.values()];
@@ -693,8 +1000,8 @@ function renderRow(pr, index, layout, opts) {
     }
 
     if (columns.changes && columns.changes.actualWidth > 0) {
-        const additions = `+${pr.additions}`;
-        const deletions = `-${pr.deletions}`;
+        const additions = `+${Number.isFinite(pr.additions) ? pr.additions : 0}`;
+        const deletions = `-${Number.isFinite(pr.deletions) ? pr.deletions : 0}`;
         // Fall back to a compact separator when the column is narrow.
         const compact = (additions.length + deletions.length + 3) * 7.2 > Math.max(0, columns.changes.actualWidth - 2);
         const separator = compact ? '/' : ' / ';
@@ -796,9 +1103,10 @@ function sendErrorSvg(res, message, opts) {
 
 export default async function handler(req, res) {
     const opts = parseOptions(req.query || {});
+    const token = resolveGithubToken();
 
     try {
-        const allPrs = await fetchUserPullRequests(opts.username);
+        const allPrs = await fetchUserPullRequests(opts.username, token);
         if (allPrs.length === 0) {
             sendErrorSvg(res, `No Pull Requests found for "${opts.username}".`, opts);
             return;
@@ -808,6 +1116,10 @@ export default async function handler(req, res) {
         if (rows.length === 0) {
             sendErrorSvg(res, 'No Pull Requests match the selected filters.', opts);
             return;
+        }
+
+        if (opts.showChanges) {
+            await enrichPullRequestChanges(rows, token);
         }
 
         sendSvg(res, buildSvg(rows, opts), CACHE_CONTROL_OK);
