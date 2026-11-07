@@ -1,20 +1,22 @@
 name: SAST CodeQL Scan
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
 permissions: read-all
-
-concurrency:
-  group: codeql-${{ github.ref }}-${{ matrix.language }}
-  cancel-in-progress: false
 
 jobs:
   codeql:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    concurrency:
+      group: codeql-${{ github.ref }}-${{ matrix.language }}
+      cancel-in-progress: false
     permissions:
       actions: read
       contents: read

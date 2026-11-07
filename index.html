@@ -1247,9 +1247,11 @@
     }
 
     async function downloadSvg() {
-        if (!currentBadgeUrl) return;
+        const badgeSrc = $('badge').style.display !== 'none' ? $('badge').src : '';
+        const targetUrl = badgeSrc || currentBadgeUrl;
+        if (!targetUrl) return;
         try {
-            const response = await fetch(currentBadgeUrl);
+            const response = await fetch(targetUrl);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const blob = await response.blob();
             const objectUrl = URL.createObjectURL(blob);

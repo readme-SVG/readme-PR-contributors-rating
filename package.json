@@ -18,6 +18,7 @@
   },
   "scripts": {
     "lint": "node --check api/badge.js && node --check i18n/validate.js && npm run validate:i18n",
+    "test": "node --test tests/*.test.mjs",
     "validate:i18n": "node scripts/validate-i18n.mjs"
   }
 }

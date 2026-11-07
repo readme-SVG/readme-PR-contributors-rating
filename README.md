@@ -181,6 +181,7 @@ The repository ships fast, dependency-free static checks that also run in CI (`.
 
 ```bash
 npm run lint          # JS syntax check + i18n schema validation
+npm test              # Node unit tests for badge auth, GraphQL & REST fallback
 ```
 
 ### i18n Integrity
@@ -206,9 +207,10 @@ curl "http://localhost:3000/api/badge?username=OstinUA&limit=5&show_pr=true&show
 ### Recommended: Vercel
 
 1. Import repository into Vercel.
-2. Set environment variable:
-   - `GITHUB_TOKEN`
-3. Deploy.
+2. In **Project → Settings → Environment Variables**, add `GITHUB_TOKEN` (for **Production** and **Preview**):
+   - Value: raw GitHub Personal Access Token (`ghp_...` classic token with **no scopes** selected, or `github_pat_...` fine-grained token with public repository access) — without quotes or prefixes.
+   - *(Note: GitHub Actions repository secrets are not shared with Vercel; configure `GITHUB_TOKEN` inside Vercel itself).*
+3. Deploy (or click **Deployments → Redeploy** if `GITHUB_TOKEN` was added after the initial deployment).
 4. Use endpoint:
    - `https://<your-domain>/api/badge?...`
 
@@ -340,7 +342,7 @@ Below is the runtime query parameter reference for `/api/badge`.
 
 ### Environment Variables
 
-- `GITHUB_TOKEN`: Optional but recommended token for increased rate limits and improved stability.
+- `GITHUB_TOKEN` (or `GH_TOKEN`): Strongly recommended Personal Access Token enabling authenticated GitHub GraphQL queries (up to 500 PRs, full line-change counts, and 5,000 points/hour). When omitted, `/api/badge` automatically falls back to the unauthenticated GitHub REST Search API (up to 100 recent PRs, subject to anonymous IP rate limits).
 
 > [!IMPORTANT]
 > All color parameters are sanitized; invalid values are replaced by secure defaults.
