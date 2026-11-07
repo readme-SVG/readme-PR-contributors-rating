@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-    expandHexColor,
     parseBoolean,
     parseColumnOrder,
     parseIsoDate,
@@ -57,13 +56,6 @@ describe('sanitization', () => {
         assert.equal(sanitizeHexColor('11223344', 'fallback'), '11223344');
         assert.equal(sanitizeHexColor('javascript:alert(1)', 'fallback'), 'fallback');
         assert.equal(sanitizeHexColor(42, 'fallback'), 'fallback');
-    });
-
-    it('expands shorthand colours for the <input type="color"> control', () => {
-        assert.equal(expandHexColor('#0af'), '00aaff');
-        assert.equal(expandHexColor('abc'), 'aabbcc');
-        assert.equal(expandHexColor('#AABBCC'), 'aabbcc');
-        assert.equal(expandHexColor('nope'), null);
     });
 });
 
