@@ -38,11 +38,9 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      - name: Validate JavaScript syntax (api/)
-        run: |
-          while IFS= read -r -d '' file; do
-            node --check "$file"
-          done < <(find api -type f -name '*.js' -print0)
+      # `npm run lint` already parses every first-party JavaScript file with the
+      # correct module dialect (see scripts/check-syntax.mjs), so only the
+      # Python sources still need a separate gate.
 
       - name: Validate Python syntax (scripts/)
         run: python -m compileall -q scripts

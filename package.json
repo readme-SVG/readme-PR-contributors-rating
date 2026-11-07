@@ -1,6 +1,6 @@
 {
   "name": "github-pr-stars-badge",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Dynamic SVG badge showing top GitHub PRs sorted by repository stars",
   "type": "module",
   "private": true,
@@ -17,7 +17,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "lint": "node --check api/badge.js && node --check i18n/validate.js && npm run validate:i18n",
+    "dev": "node scripts/dev-server.mjs",
+    "lint": "npm run check:syntax && npm run validate:i18n",
+    "check:syntax": "node scripts/check-syntax.mjs",
     "test": "node --test tests/*.test.mjs",
     "validate:i18n": "node scripts/validate-i18n.mjs"
   }

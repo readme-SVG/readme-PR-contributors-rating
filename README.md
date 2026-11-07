@@ -34,6 +34,9 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
 ## Features
 
 - Generates a live SVG badge from GitHub pull request activity using the GitHub GraphQL API.
+- Serves a machine-readable `format=json` representation of the same dataset (rank, stars, churn, URLs) for dashboards and scripts.
+- Ranks by repository stars, creation date or lines changed, in either direction (`sort`, `order`).
+- Supports an optional `since` / `until` creation window for time-boxed portfolios.
 - Sorts PR records by repository stargazer count to prioritize impact and visibility.
 - Supports filtering by merged/open (and optionally rejected) PRs.
 - Supports optional unique repository mode to avoid duplicate repo entries.
@@ -42,12 +45,15 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
   - PR creation date
   - Primary repository language
   - Line-change volume (`additions + deletions`)
-- Supports configurable column ordering through `col_order`.
+- Supports configurable column ordering through `col_order` and optional rank numbering (`show_rank`).
+- Aggregated repository rows advertise how many pull requests they stand for.
 - Exposes extensive layout controls (`badge_width`, row and column widths).
 - Exposes full color theming controls (background, title, text, muted text, star, border, shadow).
 - Supports transparent mode for seamless embedding into both dark and light READMEs.
 - Includes secure/safe query sanitization for username, custom text, and color values.
-- Includes a static visual generator UI (`index.html`) for no-code badge generation.
+- Includes a static visual generator UI (`index.html` + `assets/app.js`) for no-code badge generation: live preview, Markdown/HTML/URL snippets, share links and SVG download.
+- Persists the configuration locally, restores it from a shared `#hash` URL and offers a one-click reset.
+- Answers CORS pre-flight requests and supports `HEAD`, so the endpoint can be probed by CI smoke tests.
 - Ships multilingual UI labels via `i18n/*` locale bundles.
 - Includes an i18n key integrity validator to prevent translation drift.
 - Returns SVG-based error responses (instead of raw JSON), preserving Markdown rendering fidelity.
@@ -74,7 +80,20 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
 |   |-- workflows/             # CI: lint, CodeQL SAST, Scorecard, Dependabot, AI issue analysis
 |   `-- labels.yml             # Declarative label catalog (source of truth for sync)
 |-- api/
-|   `-- badge.js               # Serverless badge generation handler
+|   `-- badge.js               # Thin serverless handler: parse → fetch → rank → render → respond
+|-- lib/
+|   |-- constants.js           # Immutable configuration: limits, palettes, layout metrics
+|   |-- errors.js              # Request / upstream error taxonomy
+|   |-- request.js             # Query-string parsing, validation and canonical serialisation
+|   |-- github.js              # GitHub GraphQL client with REST Search fallback + caching
+|   |-- ranking.js             # Filter → aggregate → sort → cap pipeline
+|   |-- layout.js              # Column width distribution engine
+|   |-- renderer.js            # Pure SVG renderer
+|   |-- format.js              # Escaping, truncation and number/date formatting
+|   |-- cache.js               # TTL + LRU cache used to shield the GitHub API
+|   `-- response.js            # HTTP status, caching and CORS helpers
+|-- assets/
+|   `-- app.js                 # Configurator controller (classic script, no build step)
 |-- i18n/
 |   |-- en.js                  # English UI strings
 |   |-- es.js                  # Spanish UI strings
@@ -85,7 +104,10 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
 |-- scripts/
 |   |-- sync_labels.py         # Applies .github/labels.yml to the repository
 |   |-- trigger_action.py      # AI change-analysis automation (GitHub Actions)
+|   |-- check-syntax.mjs       # Dialect-aware syntax gate for every JS file
+|   |-- dev-server.mjs         # Zero-dependency local server for UI + API
 |   `-- validate-i18n.mjs      # Node.js i18n integrity check used by CI
+|-- tests/                     # node:test suites (API, library modules, frontend wiring)
 |-- index.html                 # Badge generator UI + markdown output helper
 |-- package.json               # Package metadata and scripts
 |-- requirements.txt           # Pinned Python dependencies (Dependabot-managed)
@@ -112,6 +134,14 @@ Dynamic, configurable SVG badge library for logging and visualizing top GitHub p
 
 5. **Static UI + API Separation**
    - `index.html` is a client utility; `api/badge.js` is the canonical rendering engine.
+   - The controller is a classic script (`assets/app.js`) so the page still works when opened from disk, where module loading is blocked by CORS.
+
+6. **Layered Library Instead of a Monolith**
+   - `api/badge.js` only orchestrates; parsing, fetching, ranking, layout and rendering each live in a focused module under `lib/` with no hidden state.
+
+7. **Two Output Contracts**
+   - `format=svg` never returns a non-2xx status, because GitHub Camo would render a broken image; failures become an explanatory badge.
+   - `format=json` uses standard status codes (`400`, `404`, `429`, `502`) and permissive CORS so tooling can react programmatically.
 
 ### Data Flow
 
@@ -158,7 +188,15 @@ Then export your token (if no `.env` loader is configured):
 export GITHUB_TOKEN="ghp_your_token_here"
 ```
 
-The badge handler is a serverless function; to run the full stack locally use the Vercel CLI:
+The badge handler is a serverless function. A zero-dependency server that
+reproduces the production routing (`/api/badge` plus static assets) ships with
+the repository:
+
+```bash
+npm run dev            # http://localhost:3000
+```
+
+Alternatively, use the Vercel CLI for a byte-for-byte production emulation:
 
 ```bash
 npx vercel dev
@@ -180,9 +218,14 @@ The repository ships fast, dependency-free static checks that also run in CI (`.
 ### Lint/Static Checks
 
 ```bash
-npm run lint          # JS syntax check + i18n schema validation
-npm test              # Node unit tests for badge auth, GraphQL & REST fallback
+npm run lint          # dialect-aware syntax check + i18n schema validation
+npm test              # node:test suites
 ```
+
+The suites cover the request parser, the ranking pipeline, the layout engine,
+the SVG renderer, the TTL/LRU cache, the HTTP handler (authentication, GraphQL
+and REST transports, error mapping, CORS) and the browser controller, which is
+exercised in a headless DOM harness.
 
 ### i18n Integrity
 
@@ -303,10 +346,13 @@ Below is the runtime query parameter reference for `/api/badge`.
 
 ### Identity & Dataset
 
-- `username` (string): GitHub username; sanitized to GitHub-safe characters.
-- `limit` (int, default `7`, min `1`, max `15`): Number of entries.
+- `username` (string, default `OstinUA`): GitHub username; sanitized to GitHub-safe characters.
+- `limit` (int, default `7`, range `1..15`): Number of entries.
+- `sort` (`stars|date|changes`, default `stars`): Ranking metric. `changes` ranks by added + deleted lines.
+- `order` (`desc|asc`, default `desc`): Ranking direction.
 - `show_rejected` (`true|false`, default `false`): Include closed-but-not-merged PRs.
-- `unique_repos` (`true|false`, default `false`): Keep latest PR per repository only.
+- `unique_repos` (`true|false`, default `false`): Keep one row per repository and count the suppressed PRs.
+- `since` / `until` (`YYYY-MM-DD`): Inclusive creation window. An inverted range returns HTTP 400 in JSON mode.
 
 ### Visibility & Layout
 
@@ -314,8 +360,31 @@ Below is the runtime query parameter reference for `/api/badge`.
 - `show_date` (`true|false`, default `true`)
 - `show_lang` (`true|false`, default `false`)
 - `show_changes` (`true|false`, default `false`)
+- `show_rank` (`true|false`, default `false`): Prefix every row with its `#rank`.
 - `repo_name_format` (`full|short`, default `full`)
 - `col_order` (CSV of `pr,date,lang,changes`): Ordered visible columns.
+
+### Output
+
+- `format` (`svg|json`, default `svg`): SVG badge or machine-readable dataset.
+
+```bash
+# JSON representation of the same dataset
+curl "https://readme-pr-contributors-rating.vercel.app/api/badge?username=OstinUA&format=json&limit=3"
+```
+
+```json
+{
+  "username": "OstinUA",
+  "source": "graphql",
+  "generatedAt": "2026-11-07T12:00:00.000Z",
+  "query": "username=OstinUA&limit=3",
+  "summary": { "pullRequests": 3, "repositories": 3, "merged": 2, "open": 1, "stars": 10240, "additions": 512, "deletions": 98 },
+  "rows": [
+    { "rank": 1, "repository": "acme/widget", "title": "Improve throughput", "stars": 8400, "churn": 610 }
+  ]
+}
+```
 
 ### Dimension Controls
 
@@ -330,6 +399,7 @@ Below is the runtime query parameter reference for `/api/badge`.
 
 ### Theming
 
+- `theme` (`dark|light|dimmed|night|transparent`, default `dark`): Palette preset; explicit `*_color` values override it.
 - `custom_title` (string, sanitized, max length `80`)
 - `bg_color` (hex, default `0d1117`)
 - `text_color` (hex, default `c9d1d9`)
