@@ -9,6 +9,10 @@ window.__I18N_REQUIRED_KEYS = [
   'title',
   'configTitle',
   'previewTitle',
+  'sectionGeneral',
+  'sectionColumns',
+  'sectionDimensions',
+  'sectionColors',
   'usernameLabel',
   'limitLabel',
   'showPullsLabel',
@@ -16,12 +20,22 @@ window.__I18N_REQUIRED_KEYS = [
   'showLangLabel',
   'showChangesLabel',
   'showRejectedLabel',
+  'showRankLabel',
   'columnOrderLabel',
   'uniqueReposLabel',
   'repoNameFormatLabel',
   'repoNameFormatFull',
   'repoNameFormatShort',
   'themeLabel',
+  'sortLabel',
+  'sortStars',
+  'sortDate',
+  'sortChanges',
+  'orderLabel',
+  'orderDesc',
+  'orderAsc',
+  'sinceLabel',
+  'untilLabel',
   'repoWidthLabel',
   'langWidthLabel',
   'prWidthLabel',
@@ -40,12 +54,20 @@ window.__I18N_REQUIRED_KEYS = [
   'borderColorLabel',
   'shadowColorLabel',
   'generateBtn',
+  'resetBtn',
   'previewPlaceholder',
   'markdownLabel',
+  'snippetMarkdown',
+  'snippetHtml',
+  'snippetUrl',
   'downloadBtn',
   'copyBtn',
   'copiedBtn',
+  'shareBtn',
+  'moveUpLabel',
+  'moveDownLabel',
   'errorFetch',
+  'errorDateRange',
   'footerDocs',
   'footerIssue'
 ];
@@ -61,6 +83,10 @@ window.validateI18nIntegrity = function validateI18nIntegrity() {
 
   for (const code of localeCodes) {
     const data = locales[code];
+    if (!data || typeof data !== 'object') {
+      throw new Error(`Locale "${code}" is not an object.`);
+    }
+
     for (const key of required) {
       if (!(key in data)) {
         throw new Error(`Missing i18n key "${key}" in locale "${code}".`);
@@ -70,10 +96,9 @@ window.validateI18nIntegrity = function validateI18nIntegrity() {
       }
     }
 
-    const extra = Object.keys(data).filter((k) => !required.includes(k));
+    const extra = Object.keys(data).filter((key) => !required.includes(key));
     if (extra.length) {
       throw new Error(`Unexpected i18n keys in locale "${code}": ${extra.join(', ')}`);
     }
   }
 };
-
